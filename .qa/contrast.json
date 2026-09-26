@@ -4,7 +4,52 @@
       "name": "首页",
       "path": "/"
     },
-    "total": 50,
+    "total": 352,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "单元索引",
+      "path": "/units.html"
+    },
+    "total": 29,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "背英文",
+      "path": "/study.html?unit=7a-u1&mode=en"
+    },
+    "total": 39,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "背词性",
+      "path": "/study.html?unit=7a-u1&mode=pos"
+    },
+    "total": 18,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "错题本",
+      "path": "/study.html?unit=wrong"
+    },
+    "total": 17,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "星标",
+      "path": "/study.html?unit=star"
+    },
+    "total": 49,
     "fails": [],
     "hollows": [
       {
@@ -15,7 +60,7 @@
         "large": true,
         "need": 3,
         "pass": false,
-        "px": 265.6,
+        "px": 97.2,
         "ratio": 1,
         "tag": "SPAN",
         "text": "知新",
@@ -25,55 +70,10 @@
   },
   {
     "page": {
-      "name": "单元索引",
-      "path": "/units.html"
-    },
-    "total": 352,
-    "fails": [],
-    "hollows": []
-  },
-  {
-    "page": {
-      "name": "背英文",
-      "path": "/study.html?unit=7a-u1&mode=en"
-    },
-    "total": 29,
-    "fails": [],
-    "hollows": []
-  },
-  {
-    "page": {
-      "name": "背词性",
-      "path": "/study.html?unit=7a-u1&mode=pos"
-    },
-    "total": 39,
-    "fails": [],
-    "hollows": []
-  },
-  {
-    "page": {
-      "name": "错题本",
-      "path": "/study.html?unit=wrong"
-    },
-    "total": 18,
-    "fails": [],
-    "hollows": []
-  },
-  {
-    "page": {
-      "name": "星标",
-      "path": "/study.html?unit=star"
-    },
-    "total": 17,
-    "fails": [],
-    "hollows": []
-  },
-  {
-    "page": {
       "name": "成绩小结",
       "path": "/study.html?unit=7a-u1&mode=en&practice=1"
     },
-    "total": 29,
+    "total": 352,
     "fails": [],
     "hollows": []
   }
