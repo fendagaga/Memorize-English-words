@@ -1,0 +1,80 @@
+[
+  {
+    "page": {
+      "name": "首页",
+      "path": "/"
+    },
+    "total": 50,
+    "fails": [],
+    "hollows": [
+      {
+        "bg": "rgb(245, 240, 228)",
+        "cls": "tilt",
+        "color": "rgba(0, 0, 0, 0)",
+        "hollow": true,
+        "large": true,
+        "need": 3,
+        "pass": false,
+        "px": 265.6,
+        "ratio": 1,
+        "tag": "SPAN",
+        "text": "知新",
+        "weight": "700"
+      }
+    ]
+  },
+  {
+    "page": {
+      "name": "单元索引",
+      "path": "/units.html"
+    },
+    "total": 352,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "背英文",
+      "path": "/study.html?unit=7a-u1&mode=en"
+    },
+    "total": 29,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "背词性",
+      "path": "/study.html?unit=7a-u1&mode=pos"
+    },
+    "total": 39,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "错题本",
+      "path": "/study.html?unit=wrong"
+    },
+    "total": 18,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "星标",
+      "path": "/study.html?unit=star"
+    },
+    "total": 17,
+    "fails": [],
+    "hollows": []
+  },
+  {
+    "page": {
+      "name": "成绩小结",
+      "path": "/study.html?unit=7a-u1&mode=en&practice=1"
+    },
+    "total": 29,
+    "fails": [],
+    "hollows": []
+  }
+]

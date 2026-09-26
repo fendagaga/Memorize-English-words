@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>背记 · 初中英语词表</title>
+<meta name="description" content="初中英语单词记背：背英文、背词性、错题本与星标生词本。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&amp;family=Noto+Sans+SC:wght@300;400;500;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/paper.css">
+<style>
+  /* ==========================================================================
+     背记页专属版式（.assets/paper.css 提供基调，这里只补本页需要的排布）
+     ========================================================================== */
+
+  .shell { position: relative; width: min(100%, 820px); margin-inline: auto; }
+  @media (min-width: 900px) {
+    /* 参考 07 号页左侧那道细若发丝的竖线 */
+    .shell { border-left: 1px solid var(--line-soft); padding-left: clamp(18px, 3vw, 34px); }
+  }
+
+  /* 按钮文案不折行（窄屏靠容器换行，避免出现「退/出」这种竖排按钮） */
+  .btn, .chip { white-space: nowrap; }
+
+  /* ---------- 页眉 / 页脚 ---------- */
+  .hdr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; justify-content: space-between; padding: 18px 0 10px; }
+  .brand { display: inline-flex; align-items: baseline; gap: 10px; text-decoration: none; color: var(--ink); min-height: 44px; padding-block: 4px; }
+  .brand b { font-family: var(--serif-cn); font-weight: 600; font-size: 21px; letter-spacing: .18em; }
+  .brand span { font-size: 10.5px; letter-spacing: .3em; color: var(--ink-soft); }
+  .hdr-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hdr-nav .btn { font-size: 13px; padding: 5px 10px; }
+  /* 工具条与页眉上的小按钮在窄屏/触屏上补足 44px 拇指热区（.btn-sm 默认只有 34px） */
+  @media (max-width: 700px), (pointer: coarse) {
+    .btn-sm { min-height: 44px; padding-top: 10px; padding-bottom: 10px; }
+    .hdr-nav .btn { padding-inline: 12px; }
+  }
+  .ftr { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; align-items: baseline; padding: 14px 0 34px; font-size: 12.5px; color: var(--ink-soft); }
+  #storage-note[data-mode="local"] { color: var(--wrong); }
+
+  /* 装饰性竖排小字（宽屏才出现） */
+  .side-mark { position: absolute; right: -36px; top: 92px; display: none; }
+  @media (min-width: 1040px) { .side-mark { display: block; } }
+  @media print { .side-mark { display: none; } }
+
+  /* ---------- 背记：顶部信息条 ---------- */
+  .metabar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; }
+  .metabar-l { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+  .metabar .kicker { max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .metabar-sub { font-size: 12.5px; color: var(--ink-soft); }
+  .meter-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 16px; }
+  .track { position: relative; height: 2px; margin-top: 8px; background: var(--paper-sink); overflow: hidden; }
+  .track i { display: block; width: 0; height: 100%; background: var(--cinnabar); transition: width .45s var(--ease); }
+
+  /* ---------- 背记：题卡 ---------- */
+  .quiz { margin-top: 20px; padding: clamp(18px, 4.6vw, 32px); scroll-margin-block: 14px; }
+  .quiz-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .quiz-head-l { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; }
+  .sense-badge { font-size: 11.5px; letter-spacing: .14em; color: var(--indigo); background: var(--indigo-wash); border: 1px solid var(--line); padding: 2px 8px; }
+  .q-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 18px 0 0; }
+  .q-hint { font-size: 12.5px; letter-spacing: .08em; color: var(--ink-soft); }
+  .q-meaning { font-family: var(--serif-cn); font-size: clamp(21px, 5.2vw, 31px); line-height: 1.52; margin: 10px 0 0; overflow-wrap: anywhere; }
+  .q-senses { list-style: none; margin: 8px 0 0; padding: 0; }
+  .q-senses li { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line-soft); font-family: var(--serif-cn); font-size: clamp(17px, 4.4vw, 22px); line-height: 1.5; overflow-wrap: anywhere; }
+  .q-word { font-family: var(--mono-en); font-size: clamp(30px, 9.4vw, 46px); letter-spacing: -.01em; line-height: 1.2; margin: 14px 0 0; overflow-wrap: anywhere; word-break: break-word; }
+  .q-note { font-size: 13px; color: var(--ink-soft); margin: 6px 0 0; }
+  .pos-tag { display: inline-block; font-family: var(--mono-en); font-size: 12px; color: var(--indigo); background: var(--indigo-wash); border: 1px solid var(--line); padding: 1px 6px; white-space: nowrap; }
+
+  .answer { margin-top: 18px; }
+  .answer-part { margin: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .q-input { font-size: clamp(20px, 5.4vw, 26px); }
+  .field::placeholder { color: var(--ink-soft); }   /* paper.css 的 --ink-faint 约 3:1，这里提到 ≈5.5:1 */
+  .hint-row { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; font-size: 12.5px; color: var(--ink-soft); }
+  .answer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 14px; }
+  @media (max-width: 430px) { #btn-submit, #btn-next { width: 100%; } }
+
+  /* ---------- 反馈 ---------- */
+  .feedback { margin-top: 16px; }
+  .fb { margin: 0; }
+  .fb-right { color: var(--cinnabar); }
+  .fb-word { font-size: 18px; }
+  .fb-note { font-size: 12.5px; color: var(--ink-soft); margin: 6px 0 0; }
+  .ans { border-left: 2px solid var(--cinnabar); padding-left: 14px; }
+  .ans-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+  .ans-word { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 10px 0 0; }
+  .ans-word .en { font-family: var(--mono-en); font-size: clamp(19px, 5vw, 24px); border-bottom: 2px solid var(--gold); }
+  .ans-scope { font-size: 12.5px; color: var(--ink-soft); }
+  .ans-senses { list-style: none; margin: 10px 0 0; padding: 0; }
+  .ans-senses li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px; border-top: 1px solid var(--line-soft); }
+  .ans-senses li.is-current { background: linear-gradient(90deg, var(--cinnabar-wash), rgba(240, 220, 212, 0) 82%); }
+  .ans-cn { flex: 1 1 12ch; min-width: 0; overflow-wrap: anywhere; }
+  .ans-tag { font-size: 11px; letter-spacing: .08em; color: var(--ink-soft); border: 1px solid var(--line); padding: 1px 5px; white-space: nowrap; }
+  .ans-tag-alt { color: var(--indigo); border-color: var(--indigo-wash); background: var(--indigo-wash); }
+  .ans-diff { margin-top: 12px; font-size: 13.5px; color: var(--ink-mid); }
+  .ans-k { font-size: 11.5px; letter-spacing: .2em; color: var(--ink-soft); }
+  .ans-diag { list-style: none; margin: 4px 0 0; padding: 0; }
+  .ans-diag li { padding: 3px 0; overflow-wrap: anywhere; }
+
+  .status-line { min-height: 22px; margin-top: 14px; font-size: 13px; color: var(--ink-soft); }
+
+  /* ---------- 工具条 ---------- */
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 16px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; padding: 3px; border: 1px solid var(--line-soft); background: rgba(251, 248, 241, .55); }
+  #btn-star[aria-pressed="true"] { background: #5E4A14; border-color: #5E4A14; color: var(--paper-raise); }
+  .chip { min-height: 44px; }               /* 词性按钮是本页主交互，严格对齐契约的 44px */
+
+  /* ---------- 成绩小结 ---------- */
+  .sum { margin-top: 24px; padding: clamp(20px, 5vw, 36px); }
+  .sum-grid { display: flex; flex-wrap: wrap; align-items: center; gap: clamp(18px, 4vw, 40px); margin-top: 18px; }
+  .ring-wrap { position: relative; width: 150px; height: 150px; flex: 0 0 auto; }
+  .ring { display: block; width: 100%; height: 100%; }
+  .ring circle { fill: none; stroke-width: 6; }
+  .ring-track { stroke: var(--paper-sink); }
+  .ring-fill { stroke: var(--cinnabar); transition: stroke-dashoffset .9s var(--ease); }
+  .ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--serif-cn); font-size: 38px; font-weight: 600; }
+  .ring-num small { font-size: 15px; margin-left: 2px; color: var(--ink-soft); }
+  .stats { flex: 1 1 250px; min-width: 0; margin: 0; }
+  .stat { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line-soft); }
+  .stat dt { font-size: 13px; color: var(--ink-soft); }
+  .stat dd { margin: 0; font-family: var(--mono-en); font-size: 17px; }
+  .sum-words { list-style: none; margin: 10px 0 0; padding: 0; }
+  .sw { padding: 12px 0; border-top: 1px solid var(--line-soft); }
+  .sw-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; }
+  .sw-word { font-size: 18px; }
+  .sw-count { margin-left: auto; font-size: 12.5px; color: var(--wrong); }
+  .sw-cn { margin: 4px 0 0; font-size: 14px; color: var(--ink-mid); overflow-wrap: anywhere; }
+
+  /* ---------- 错题本 / 星标 ---------- */
+  .list-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin-top: 20px; }
+  .list-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .list-count { font-size: 13px; color: var(--ink-soft); margin: 6px 0 0; }
+  .grp { margin-top: 26px; }
+  .grp-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .grp-title { font-size: 17px; }
+  .rows { list-style: none; margin: 0; padding: 0; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; align-items: start; padding: 13px 0; border-bottom: 1px solid var(--line-soft); }
+  @media (max-width: 560px) { .row { grid-template-columns: minmax(0, 1fr); } }
+  .row-word { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; }
+  .row-word .en { font-size: 17px; }
+  .row-cn { margin: 4px 0 0; font-size: 13.5px; color: var(--ink-mid); overflow-wrap: anywhere; }
+  .row-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 7px 0 0; }
+  .tag { font-size: 11px; letter-spacing: .06em; border: 1px solid var(--line); padding: 1px 6px; color: var(--ink-soft); }
+  .tag-count { color: var(--wrong); border-color: var(--wrong-wash); background: var(--wrong-wash); }
+  .tag-soft { color: var(--ink-soft); border-color: var(--line-soft); }   /* 弱化只走边框，文字保持对比度 */
+  .tag-star { color: var(--ink-mid); background: var(--gold-wash); border-color: var(--gold); }
+  .row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* ---------- 空态 ---------- */
+  .empty { margin-top: 24px; padding: clamp(20px, 5vw, 34px); border: 1px dashed var(--line-strong); background: rgba(251, 248, 241, .6); }
+  .empty h2 { font-size: 19px; margin-bottom: 8px; }
+  .empty p { color: var(--ink-soft); }
+  .empty-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+
+  /* 视图切换的轻微淡入：基础态可见，动画只是锦上添花（不依赖它才显示） */
+  .reveal { animation: revealIn .42s var(--ease) both; }
+  @keyframes revealIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到背记区</a>
+<noscript><p class="wrap" style="padding-top:20px">本页需要 JavaScript 才能判分、记录错题与进度，请在浏览器里开启后重试。</p></noscript>
+
+<div class="wrap">
+  <div class="shell">
+    <span class="vert side-mark" aria-hidden="true">温故而知新</span>
+
+    <header class="hdr rise" style="--delay:.02s">
+      <a class="brand" href="index.html"><b>背词知新</b><span>STUDY</span></a>
+      <nav class="hdr-nav" aria-label="站点导航">
+        <a class="btn btn-sm btn-ghost" href="units.html">单元索引</a>
+        <a class="btn btn-sm btn-ghost" href="study.html?unit=wrong">错题本 <span class="tnum" id="nav-wrong-count">0</span></a>
+        <a class="btn btn-sm btn-ghost" href="study.html?unit=star">星标 <span class="tnum" id="nav-star-count">0</span></a>
+      </nav>
+    </header>
+    <hr class="rule-double">
+
+    <main id="main">
+
+      <!-- ==================== 背记 ==================== -->
+      <section id="view-study" class="view" hidden aria-labelledby="study-h1">
+        <h1 id="study-h1" class="visually-hidden">背记</h1>
+
+        <div class="metabar">
+          <div class="metabar-l">
+            <span class="kicker" id="unit-kicker">—</span>
+            <span class="metabar-sub" id="unit-sub"></span>
+          </div>
+          <a class="btn btn-sm btn-ghost" id="btn-exit" href="units.html">退出</a>
+        </div>
+
+        <div class="meter-top">
+          <span class="label" aria-live="polite">第 <b class="tnum" id="q-now">1</b> / <span class="tnum" id="q-total">0</span> <span id="q-unit">义项</span></span>
+          <span class="label">正确率 <b class="tnum" id="acc-val">—</b></span>
+        </div>
+        <div class="track" id="bar" role="progressbar" aria-label="本轮进度" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><i id="bar-fill"></i></div>
+
+        <article class="card quiz" id="card">
+          <div class="quiz-head">
+            <div class="quiz-head-l">
+              <span class="label" id="card-mode-label">背英文</span>
+              <span class="sense-badge" id="sense-badge" hidden></span>
+            </div>
+            <span class="seal-slot" id="seal-slot" aria-hidden="true" hidden></span>
+          </div>
+
+          <div id="q-body"></div>
+
+          <form id="answer-form" class="answer" aria-label="作答" novalidate>
+            <div class="answer-part" id="answer-a">
+              <label class="visually-hidden" for="in-en">英文拼写</label>
+              <input class="field field-en q-input" id="in-en" name="en" type="text"
+                     autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                     enterkeyhint="done" placeholder="写出英文单词">
+              <p class="hint-row"><span>不区分大小写</span><span>拼写须完全正确</span><span>Enter 提交</span></p>
+            </div>
+
+            <div class="answer-part" id="answer-b" hidden>
+              <div class="chips" id="pos-chips" role="group" aria-label="选择词性"></div>
+              <label class="visually-hidden" for="in-cn">中文释义</label>
+              <textarea class="field" id="in-cn" name="cn" rows="2" enterkeyhint="send"
+                        autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                        placeholder="写出中文释义（写中关键词即可）"></textarea>
+              <p class="hint-row"><span>词性与释义都对才算对</span><span>Enter 提交</span><span>Shift＋Enter 换行</span></p>
+            </div>
+
+            <div class="answer-actions">
+              <button class="btn btn-primary" id="btn-submit" type="submit">提交</button>
+              <button class="btn" id="btn-next" type="button" hidden>下一词</button>
+            </div>
+          </form>
+        </article>
+
+        <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
+        <p class="status-line"><span id="status" role="status" aria-live="polite"></span></p>
+
+        <hr class="rule-soft" style="margin-top:18px">
+        <div class="toolbar" role="group" aria-label="练习设置">
+          <div class="seg" role="group" aria-label="背记模式">
+            <button class="btn btn-sm" id="mode-en" type="button" aria-pressed="true">背英文</button>
+            <button class="btn btn-sm" id="mode-pos" type="button" aria-pressed="false">背词性</button>
+          </div>
+          <button class="btn btn-sm" id="btn-shuffle" type="button" aria-pressed="false">乱序</button>
+          <button class="btn btn-sm" id="btn-sense" type="button" aria-pressed="true">义项拆卡</button>
+          <button class="btn btn-sm" id="btn-star" type="button" aria-pressed="false">☆ 星标</button>
+          <button class="btn btn-sm" id="btn-speak" type="button">🔊 朗读</button>
+        </div>
+      </section>
+
+      <!-- ==================== 成绩小结 ==================== -->
+      <section id="view-summary" class="view" hidden aria-labelledby="sum-h1">
+        <p class="kicker">成绩小结</p>
+        <h1 id="sum-h1" style="font-size:clamp(24px,6vw,34px);margin-top:12px">这一轮背完了</h1>
+        <article class="card sum">
+          <div class="sum-grid">
+            <div class="ring-wrap">
+              <svg class="ring" id="ring" viewBox="0 0 120 120" role="img" aria-label="正确率">
+                <circle class="ring-track" cx="60" cy="60" r="52"></circle>
+                <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52" transform="rotate(-90 60 60)"></circle>
+              </svg>
+              <span class="ring-num tnum" id="ring-num" aria-hidden="true">0<small>%</small></span>
+            </div>
+            <dl class="stats">
+              <div class="stat"><dt>正确率</dt><dd id="sum-acc">0%</dd></div>
+              <div class="stat"><dt>用时</dt><dd id="sum-time">0:00</dd></div>
+              <div class="stat"><dt>答对</dt><dd id="sum-right">0</dd></div>
+              <div class="stat"><dt>答错</dt><dd id="sum-wrong">0</dd></div>
+              <div class="stat"><dt>答错词数</dt><dd id="sum-wrong-words">0</dd></div>
+            </dl>
+          </div>
+
+          <hr class="rule" style="margin-top:26px">
+          <h2 style="font-size:17px;margin-top:18px">错词表</h2>
+          <p class="list-count" id="sum-empty" hidden>这一轮没有答错的词，干净利落。</p>
+          <ul class="sum-words" id="sum-list"></ul>
+
+          <div class="list-actions" style="margin-top:22px">
+            <button class="btn btn-primary" id="btn-retry-wrong" type="button">重背错题</button>
+            <button class="btn" id="btn-again" type="button">再来一遍</button>
+            <a class="btn btn-ghost" id="btn-back-units" href="units.html">回单元列表</a>
+            <a class="btn btn-ghost" id="btn-back-list" href="units.html" hidden>回错题本</a>
+          </div>
+        </article>
+      </section>
+
+      <!-- ==================== 错题本 ==================== -->
+      <section id="view-wrong" class="view" hidden aria-labelledby="wrong-h1">
+        <p class="kicker">错题本</p>
+        <h1 id="wrong-h1" style="font-size:clamp(24px,6vw,34px);margin-top:12px">答错的词都收在这里</h1>
+        <p class="list-count" id="wrong-count" aria-live="polite">共 0 条待复习</p>
+        <div class="list-head">
+          <div class="list-actions">
+            <button class="btn btn-primary" id="btn-wrong-practice" type="button">开始重练</button>
+            <button class="btn" id="btn-export" type="button">导出 Markdown</button>
+            <a class="btn btn-ghost" href="units.html">单元索引</a>
+          </div>
+        </div>
+        <div id="wrong-list"></div>
+        <div class="empty" id="wrong-empty" hidden>
+          <h2>错题本是空的</h2>
+          <p>背记时答错的词会自动收进来，按单词义项去重、错次累加；答对一次即自动销号。</p>
+          <div class="empty-actions"><a class="btn btn-primary" href="units.html">去背一个单元</a></div>
+        </div>
+      </section>
+
+      <!-- ==================== 星标生词本 ==================== -->
+      <section id="view-star" class="view" hidden aria-labelledby="star-h1">
+        <p class="kicker">星标生词本</p>
+        <h1 id="star-h1" style="font-size:clamp(24px,6vw,34px);margin-top:12px">自己挑出来的生词</h1>
+        <p class="list-count" id="star-count" aria-live="polite">共 0 个词条</p>
+        <div class="list-head">
+          <div class="list-actions">
+            <button class="btn btn-primary" id="btn-star-practice" type="button">开始重练</button>
+            <a class="btn btn-ghost" href="units.html">单元索引</a>
+          </div>
+        </div>
+        <div id="star-list"></div>
+        <div class="empty" id="star-empty" hidden>
+          <h2>生词本还是空的</h2>
+          <p>背记时点工具条上的「☆ 星标」，这个词就会收进生词本，方便回头专门过一遍。</p>
+          <div class="empty-actions"><a class="btn btn-primary" href="units.html">去背一个单元</a></div>
+        </div>
+      </section>
+
+      <!-- ==================== 未指定单元 ==================== -->
+      <section id="view-empty" class="view" hidden aria-labelledby="empty-h1">
+        <p class="kicker">没有可背的单元</p>
+        <h1 id="empty-h1" style="font-size:clamp(24px,6vw,34px);margin-top:12px">先选一个单元</h1>
+        <div class="empty">
+          <p id="empty-msg">背记界面需要指定一个单元，例如 <span class="en">study.html?unit=7a-u1&amp;mode=en</span>。</p>
+          <div class="empty-actions">
+            <a class="btn btn-primary" href="units.html">去单元索引</a>
+            <a class="btn" id="btn-empty-continue" href="study.html" hidden>继续上次</a>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="ftr">
+      <span id="storage-note" aria-live="polite">正在连接服务端…</span>
+      <span>宣纸 · 初中英语词表</span>
+    </footer>
+  </div>
+</div>
+
+<script type="module">
+import {
+  VOCAB, judgeEn, judgeCn, judgePos, answerPosText,
+  unitById, volumeById, siblingSenses, buildQueue, cardSenses, mergeSettings,
+} from './assets/vocab.js';
+import {
+  loadState, getStorageMode, getUid, lastStudied, hasPendingSync,
+  mistakeList, recordMistake, clearMistake,
+  starList, isStarred, toggleStar,
+  saveProgress, getProgress, saveSettings,
+  exportWrongbookUrl, buildWrongbookMarkdown, downloadText,
+} from './assets/api.js';
+
+/* ========================== 常量与小工具 ========================== */
+
+const FREE_ANSWER_HOLD = 700;              // 答对后自动进下一词的停留时间（毫秒）
+const RING_R = 52;
+const RING_C = 2 * Math.PI * RING_R;
+const MODE_LABEL = { en: '拼写', pos: '词性·释义', cn: '释义' };
+
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+const prefersReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fmtTime = (ms) => {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
+const CARD_BY_ID = new Map(VOCAB.cards.map((c) => [c.id, c]));
+
+function setStatus(text) { statusEl.textContent = text || ''; }
+
+function fatal(err) {
+  setStatus(`出错了：${(err && err.message) ? err.message : String(err)}`);
+}
+
+/** 事件处理器包装：同步抛错与 Promise 拒绝都不往控制台丢错误。 */
+function safe(fn) {
+  return (...args) => {
+    try {
+      const ret = fn(...args);
+      if (ret && typeof ret.then === 'function') ret.catch(fatal);
+    } catch (err) {
+      fatal(err);
+    }
+  };
+}
+
+/* ========================== DOM ========================== */
+
+const views = {
+  study: $('view-study'), summary: $('view-summary'),
+  wrong: $('view-wrong'), star: $('view-star'), empty: $('view-empty'),
+};
+const statusEl = $('status');
+const feedbackEl = $('feedback');
+const cardEl = $('card');
+const qBody = $('q-body');
+const sealSlot = $('seal-slot');
+const senseBadge = $('sense-badge');
+const cardModeLabel = $('card-mode-label');
+const unitKickerEl = $('unit-kicker');
+const unitSubEl = $('unit-sub');
+const btnExit = $('btn-exit');
+const qNowEl = $('q-now');
+const qTotalEl = $('q-total');
+const qUnitEl = $('q-unit');
+const accValEl = $('acc-val');
+const barEl = $('bar');
+const barFill = $('bar-fill');
+const ringEl = $('ring');
+const ringFill = $('ring-fill');
+const ringNum = $('ring-num');
+const formEl = $('answer-form');
+const answerA = $('answer-a');
+const answerB = $('answer-b');
+const inEn = $('in-en');
+const inCn = $('in-cn');
+const posChips = $('pos-chips');
+const btnSubmit = $('btn-submit');
+const btnNext = $('btn-next');
+const modeEnBtn = $('mode-en');
+const modePosBtn = $('mode-pos');
+const btnShuffle = $('btn-shuffle');
+const btnSense = $('btn-sense');
+const btnStar = $('btn-star');
+const btnSpeak = $('btn-speak');
+const storageNote = $('storage-note');
+const navWrongCount = $('nav-wrong-count');
+const navStarCount = $('nav-star-count');
+const wrongListEl = $('wrong-list');
+const starListEl = $('star-list');
+const wrongEmptyEl = $('wrong-empty');
+const starEmptyEl = $('star-empty');
+const wrongCountEl = $('wrong-count');
+const starCountEl = $('star-count');
+const btnWrongPractice = $('btn-wrong-practice');
+const btnStarPractice = $('btn-star-practice');
+
+/* ========================== URL 参数 ========================== */
+
+const params = new URLSearchParams(location.search);
+const rawUnit = (params.get('unit') || '').trim();
+const qMode = params.get('mode');
+const qShuffle = params.get('shuffle');
+const qSense = params.get('sense');
+const qPractice = params.get('practice') === '1';
+
+/* ========================== 页面状态 ========================== */
+
+const S = {
+  state: { version: 1, mistakes: {}, stars: {}, progress: {}, settings: {} },
+  view: 'study',
+  sourceType: 'unit',   // unit | wrong | star
+  unitId: '',           // 真实单元 id（全库为 'all'；错题本/星标为空串）
+  unitKey: '',          // 进度 key：单元 id 或 wrong / star
+  unitKicker: '',
+  unitSub: '',
+  baseSub: '',
+  practice: false,
+  roundIds: null,       // 显式卡 id 列表（错题重练 / 星标重练 / 重背错题）
+  mode: 'en',
+  shuffled: false,
+  senseSplit: true,
+  queue: [],
+  idx: 0,
+  answered: false,
+  submitting: false,
+  lastWasRight: false,
+  correct: 0,
+  wrong: 0,
+  wrongIds: new Map(),
+  curSenses: [],
+  posSel: '',
+  startedAt: Date.now(),
+  finishedAt: 0,
+  pendingAdvance: null,
+  ttsSupported: false,
+  ttsVoice: null,
+};
+
+/* ========================== 视图切换 ========================== */
+
+function showView(name) {
+  S.view = name;
+  for (const [key, el] of Object.entries(views)) {
+    el.hidden = key !== name;             // 一次同步改完：先全部隐藏、再只留一个，不会出现两个 h1 同时可见
+    if (key === name) {
+      el.classList.remove('reveal');
+      void el.offsetWidth;              // 重排一次，让动画能重新触发
+      el.classList.add('reveal');
+    }
+  }
+  if (name === 'study' || name === 'summary') updateUrl();
+  // 视图从 hidden 变可见之后再聚焦：否则 offsetParent 还是 null，首题会聚焦失败
+  if (name === 'study') focusAnswer();
+  window.scrollTo({ top: 0, behavior: prefersReduced() ? 'auto' : 'smooth' });
+}
+
+/* ========================== 词性选项 ========================== */
+
+function posChoices() {
+  if (S.unitId && S.unitId !== 'all') {
+    const unit = unitById(S.unitId);
+    if (unit && unit.posPresent && unit.posPresent.length) return unit.posPresent.slice();
+  }
+  const set = new Set();
+  for (const card of S.queue) {
+    for (const sense of cardSenses(card)) {
+      const scopes = (sense.posScopes && sense.posScopes.length) ? sense.posScopes : [sense.pos];
+      for (const p of scopes) if (p) set.add(p);
+    }
+  }
+  const order = VOCAB.posOptions || [];
+  const list = order.filter((p) => set.has(p));
+  for (const p of set) if (!list.includes(p)) list.push(p);
+  return list.length ? list : order.slice();
+}
+
+function buildPosChips() {
+  S.posSel = '';
+  const options = posChoices();
+  posChips.innerHTML = options.map((p) => (
+    `<button class="chip" type="button" data-pos="${esc(p)}" aria-pressed="false">${esc(p)}</button>`
+  )).join('');
+  posChips.setAttribute('aria-label', `选择词性（共 ${options.length} 个选项）`);
+}
+
+/* ========================== 题干渲染 ========================== */
+
+function htmlQuestionEn(card, senses) {
+  if (senses.length > 1) {
+    return `<p class="q-meta"><span class="q-hint">看中文，写出英文单词（整词 ${senses.length} 个义项）</span></p>
+      <ul class="q-senses">${senses.map((s) => (
+        `<li><span class="pos-tag">${esc(s.pos)}</span><span>${esc(s.cn)}</span></li>`
+      )).join('')}</ul>`;
+  }
+  return `<p class="q-meta"><span class="pos-tag">${esc(card.pos)}</span><span class="q-hint">看中文，写出英文单词</span></p>
+    <p class="q-meaning">${esc(card.cn)}</p>`;
+}
+
+function htmlQuestionPos(card) {
+  return `<p class="q-meta"><span class="q-hint">看单词，选词性并写出中文释义</span></p>
+    <p class="q-word en">${esc(card.word)}</p>
+    ${card.note ? `<p class="q-note">${esc(card.note)}</p>` : ''}`;
+}
+
+function sayBtnHtml(text, cls) {
+  const enabled = !!S.ttsVoice;
+  const attrs = enabled ? '' : ' disabled title="未找到英语语音，朗读不可用"';
+  return `<button class="${cls || 'btn btn-sm btn-ghost'}" type="button" data-say="${esc(text)}" aria-label="朗读 ${esc(text)}"${attrs}>🔊</button>`;
+}
+
+function renderQuestion() {
+  const card = S.queue[S.idx];
+  if (!card) { finishRound(); return; }
+
+  S.answered = false;
+  cancelPending();
+  const senses = cardSenses(card);
+  S.curSenses = senses;
+
+  cardEl.classList.remove('flash-right', 'flash-wrong');
+  sealSlot.innerHTML = '';
+  sealSlot.hidden = true;
+  feedbackEl.innerHTML = '';
+
+  // 「义项 N / M」角标：拆卡模式标第几义项，整词模式标共几个义项
+  if (senses.length > 1) {
+    senseBadge.hidden = false;
+    senseBadge.textContent = `整词 · ${senses.length} 个义项`;
+  } else if (card.senseTotal > 1) {
+    senseBadge.hidden = false;
+    senseBadge.textContent = `义项 ${card.senseIndex} / ${card.senseTotal}`;
+  } else {
+    senseBadge.hidden = true;
+    senseBadge.textContent = '';
+  }
+
+  cardModeLabel.textContent = S.mode === 'en' ? '背英文' : '背词性';
+  qBody.innerHTML = S.mode === 'en' ? htmlQuestionEn(card, senses) : htmlQuestionPos(card);
+
+  answerA.hidden = S.mode !== 'en';
+  answerB.hidden = S.mode !== 'pos';
+  inEn.value = '';
+  inCn.value = '';
+  for (const chip of posChips.querySelectorAll('.chip')) chip.setAttribute('aria-pressed', 'false');
+  S.posSel = '';
+
+  btnSubmit.hidden = false;
+  btnSubmit.disabled = false;
+  btnNext.hidden = true;
+  qUnitEl.textContent = S.senseSplit ? '义项' : '张卡';   // 拆卡时一张卡就是一个义项
+  paintStar();
+  updateMeter();
+  focusAnswer();
+}
+
+function focusAnswer() {
+  const el = S.mode === 'en' ? inEn : inCn;
+  if (!el || el.offsetParent === null) return;
+  try { el.focus(); } catch { /* 忽略 */ }
+}
+
+/* ========================== 计分与进度 ========================== */
+
+function updateMeter() {
+  const total = S.queue.length;
+  const done = Math.min(S.idx + (S.answered ? 1 : 0), total);
+  qNowEl.textContent = String(total ? Math.min(S.idx + 1, total) : 0);
+  qTotalEl.textContent = String(total);
+  barFill.style.width = total ? `${Math.round((done / total) * 100)}%` : '0%';
+  barEl.setAttribute('aria-valuenow', String(done));
+  barEl.setAttribute('aria-valuemax', String(total));
+  const answered = S.correct + S.wrong;
+  accValEl.textContent = answered ? `${Math.round((S.correct / answered) * 100)}%` : '—';
+}
+
+function persistProgress(index) {
+  const value = (typeof index === 'number') ? index : resumeIndex();
+  return saveProgress(S.unitKey, {
+    index: value, mode: S.mode, shuffled: S.shuffled, total: S.queue.length,
+  }).then((next) => { S.state = next; }).catch(() => { /* 离线时 api 层已兜底 */ });
+}
+
+/** 下次回到这个单元时应该停在哪张卡：已作答的这张不再重来。 */
+function resumeIndex() {
+  return Math.min(S.idx + (S.answered ? 1 : 0), S.queue.length);
+}
+
+/* ========================== 判分 / 提交流程 ========================== */
+
+function readAnswer() { return S.mode === 'en' ? inEn.value : inCn.value; }
+function writeAnswer(value) { if (S.mode === 'en') inEn.value = value; else inCn.value = value; }
+
+function submitAnswer() {
+  if (S.submitting) return;                 // 防重入：连按回车不会把同一张卡判两次、写两次错题本
+  if (S.answered) return;                   // 已作答：忽略重复 Enter（进下一词交给按钮或自动前进）
+  const card = S.queue[S.idx];
+  if (!card) return;
+  const senses = (S.curSenses && S.curSenses.length) ? S.curSenses : cardSenses(card);
+
+  if (S.mode === 'en') {
+    const raw = inEn.value;
+    if (!raw.trim()) { setStatus('请先输入英文单词再提交。'); inEn.focus(); return; }
+    const ok = judgeEn(raw, card);
+    lockSubmit();
+    return ok
+      ? onCorrect(card, senses, { kind: 'en' })
+      : onWrong(card, senses, { kind: 'en', input: raw, failed: senses.map((s) => s.id) });
+  }
+
+  const sel = S.posSel;
+  const cnRaw = inCn.value;
+  if (!sel) { setStatus('请先选择词性：本义项在范围内选任意一个都对。'); return; }
+  if (!cnRaw.trim()) { setStatus('请先写下中文释义再提交。'); inCn.focus(); return; }
+
+  // 拆卡模式 per 只有一行，等价于 judgePos(sel, card) && judgeCn(cnRaw, card)
+  const per = senses.map((s) => ({ s, pos: judgePos(sel, s), cn: judgeCn(cnRaw, s) }));
+  const failed = per.filter((r) => !(r.pos && r.cn)).map((r) => r.s.id);
+  lockSubmit();
+  return failed.length
+    ? onWrong(card, senses, { kind: 'pos', sel, input: cnRaw, per, failed })
+    : onCorrect(card, senses, { kind: 'pos', sel, input: cnRaw });
+}
+
+/**
+ * 进入「提交中」态：按钮禁用，并且同一轮事件里忽略重复提交。
+ * 解锁在下一词渲染时（renderQuestion）完成，状态写入期间按钮保持不可点。
+ */
+function lockSubmit() {
+  S.answered = true;                        // 这张卡已作答：重复提交一律忽略
+  S.submitting = true;
+  btnSubmit.disabled = true;
+  // 立刻清空输入框：用户写的这一份已经记进 detail，清掉后抢拍打的下一题才不会被粘在一起
+  if (S.mode === 'en') inEn.value = '';
+  else inCn.value = '';
+  Promise.resolve().then(() => { S.submitting = false; });
+}
+
+function showSeal(kind) {
+  sealSlot.hidden = false;
+  sealSlot.innerHTML = `<span class="seal ${kind === 'right' ? 'is-right' : 'is-wrong'}">${kind === 'right' ? '对' : '错'}</span>`;
+}
+
+/** 提交后把反馈带进视野：软键盘弹起时输入框与按钮也不会被挡住。 */
+function revealFeedback() {
+  try {
+    feedbackEl.scrollIntoView({ block: 'nearest', behavior: prefersReduced() ? 'auto' : 'smooth' });
+  } catch { /* 老浏览器忽略 */ }
+}
+
+async function onCorrect(card, senses, detail) {
+  S.correct += 1;
+  S.lastWasRight = true;
+  cardEl.classList.add('flash-right');
+  showSeal('right');
+  const posText = senses.map((s) => s.pos).filter(Boolean).join(' / ');
+  feedbackEl.innerHTML = `<p class="fb fb-right"><b>答对了</b>　<span class="en fb-word">${esc(card.word)}</span>${posText ? `　<span class="fb-note">${esc(posText)}</span>` : ''}</p>
+    <p class="fb-note" id="fb-extra"></p>`;
+  setStatus('答对了，马上进入下一词。');
+  updateMeter();
+  revealFeedback();
+  // 先给界面反馈，再落盘；写入全部 await，且都只发一次
+  const writes = Promise.all([
+    persistProgress(resumeIndex()),
+    clearMistakesFor(senses.map((s) => s.id)),
+  ]);
+  scheduleAdvance(prefersReduced() ? 0 : FREE_ANSWER_HOLD);
+  await writes;
+}
+
+async function onWrong(card, senses, detail) {
+  S.wrong += 1;
+  S.lastWasRight = false;
+  cardEl.classList.add('flash-wrong');
+  showSeal('wrong');
+
+  // 背英文答错 → 整词错；背词性答错 → 只记没过的义项
+  const toRecord = detail.kind === 'en' ? senses : senses.filter((s) => detail.failed.includes(s.id));
+  for (const s of toRecord) S.wrongIds.set(s.id, (S.wrongIds.get(s.id) || 0) + 1);
+
+  renderAnswer(card, senses, detail);
+  btnSubmit.hidden = true;
+  btnNext.hidden = false;
+  btnNext.focus();
+  setStatus(detail.kind === 'en' ? '拼写不对，已记入错题本。' : '有误，已记入错题本。对照下面的答案再进下一词。');
+  updateMeter();
+  revealFeedback();
+  await Promise.all([
+    persistProgress(resumeIndex()),
+    recordAll(toRecord, detail.kind === 'en' ? 'en' : 'pos'),
+  ]);
+}
+
+async function recordAll(senses, mode) {
+  for (const s of senses) {
+    try { S.state = await recordMistake(s.id, mode); } catch { /* 离线兜底 */ }
+  }
+  paintCounts();
+}
+
+async function clearMistakesFor(ids) {
+  let changed = false;
+  for (const cardId of ids) {
+    const rec = S.state.mistakes[cardId];
+    if (rec && !rec.clearedAt) {
+      try { S.state = await clearMistake(cardId); changed = true; } catch { /* 忽略 */ }
+    }
+  }
+  if (changed) {
+    paintCounts();
+    const extra = $('fb-extra');
+    if (extra) extra.textContent = '已从错题本销号。';
+  }
+}
+
+/* ---------- 正确答案卡（含同词其他义项） ---------- */
+
+function ansSenseRow(sense, isCurrent) {
+  return `<li class="${isCurrent ? 'is-current' : ''}">
+    <span class="pos-tag">${esc(sense.pos)}</span>
+    <span class="ans-cn">${esc(sense.cn)}</span>
+    <span class="ans-tag${isCurrent ? '' : ' ans-tag-alt'}">${isCurrent ? '本义项' : '同词另一义项'}</span>
+    ${sayBtnHtml(sense.word)}
+  </li>`;
+}
+
+function enDiffHtml(card, detail) {
+  const alt = (card.wordCandidates || []).filter((w) => w !== card.word);
+  return `<p class="ans-line"><span class="ans-k">拼写</span>　你写的是 <span class="en">${esc(detail.input)}</span>，正确拼写是 <span class="en">${esc(card.word)}</span>${alt.length ? `（也接受 ${alt.map(esc).join(' / ')}）` : ''}。</p>`;
+}
+
+function posDiffHtml(detail) {
+  const rows = detail.per.map((r) => {
+    const bits = [];
+    bits.push(r.pos
+      ? '词性 ✓'
+      : `词性 ✗（你选了 ${esc(detail.sel)}；本义项可填 ${(r.s.posScopes || [r.s.pos]).map(esc).join(' / ')}）`);
+    bits.push(r.cn ? '释义 ✓' : `释义 ✗（本义项释义：${esc(r.s.cn)}）`);
+    return `<li><span class="pos-tag">${esc(r.s.pos)}</span>　${bits.join('　')}</li>`;
+  }).join('');
+  return `<p class="ans-line"><span class="ans-k">诊断</span></p><ul class="ans-diag">${rows}</ul>`;
+}
+
+function renderAnswer(card, senses, detail) {
+  const currentIds = new Set(senses.map((s) => s.id));
+  const siblings = siblingSenses(card);
+  const rows = siblings.length ? siblings : senses;
+  const scopes = card.posScopes || [];
+  const scopeNote = scopes.length > 1 ? `<span class="ans-scope">（${scopes.map(esc).join(' / ')} 均可）</span>` : '';
+
+  feedbackEl.innerHTML = `<div class="ans">
+    <div class="ans-head">
+      <span class="label">正确答案</span>
+      ${sayBtnHtml(card.word, 'btn btn-sm btn-ghost')}
+    </div>
+    <p class="ans-word"><span class="en">${esc(card.word)}</span><span class="pos-tag">${esc(answerPosText(card))}</span>${scopeNote}</p>
+    <ul class="ans-senses">${rows.map((s) => ansSenseRow(s, currentIds.has(s.id))).join('')}</ul>
+    <div class="ans-diff">${detail.kind === 'en' ? enDiffHtml(card, detail) : posDiffHtml(detail)}</div>
+    <p class="fb-note" id="fb-extra"></p>
+  </div>`;
+}
+
+/* ---------- 推进 ---------- */
+
+function scheduleAdvance(delay) {
+  cancelPending();
+  if (!delay) { advance(); return; }
+  S.pendingAdvance = setTimeout(() => { S.pendingAdvance = null; advance(); }, delay);
+}
+
+function cancelPending() {
+  if (S.pendingAdvance) { clearTimeout(S.pendingAdvance); S.pendingAdvance = null; }
+}
+
+function advance() {
+  // 只有「答对后自动前进」才把输入框里的内容带到下一词（用户可能已经抢拍打了下一题）；
+  // 答错时框里是这次的错误答案，必须清掉，否则会误判下一张卡。
+  const carry = (S.answered && S.lastWasRight) ? readAnswer() : '';
+  cancelPending();
+  setStatus('');                            // 上一题的提示不跟着新题跑
+  S.answered = false;
+  cardEl.classList.remove('flash-right', 'flash-wrong');
+  sealSlot.innerHTML = '';
+  sealSlot.hidden = true;
+  S.idx += 1;
+  if (S.idx >= S.queue.length) { finishRound(); return; }
+  renderQuestion();
+  if (carry) writeAnswer(carry);
+  updateMeter();
+}
+
+/* ========================== 成绩小结 ========================== */
+
+function finishRound() {
+  cancelPending();
+  S.answered = false;
+  S.finishedAt = Date.now();
+  persistProgress(S.queue.length);
+  renderSummary();
+  showView('summary');
+  setStatus('本轮结束，请看成绩小结。');
+}
+
+function renderSummary() {
+  const answered = S.correct + S.wrong;
+  const acc = answered ? Math.round((S.correct / answered) * 100) : 0;
+
+  ringFill.style.strokeDasharray = RING_C.toFixed(1);
+  ringFill.style.strokeDashoffset = (RING_C * (1 - acc / 100)).toFixed(1);
+  ringEl.setAttribute('aria-label', `正确率 ${acc}%（答对 ${S.correct}，答错 ${S.wrong}）`);
+  ringNum.innerHTML = `${acc}<small>%</small>`;
+  $('sum-acc').textContent = `${acc}%`;
+  $('sum-time').textContent = fmtTime(S.finishedAt - S.startedAt);
+  $('sum-right').textContent = String(S.correct);
+  $('sum-wrong').textContent = String(S.wrong);
+  $('sum-wrong-words').textContent = String(S.wrongIds.size);
+
+  const rows = [...S.wrongIds.entries()]
+    .map(([cardId, n]) => ({ card: CARD_BY_ID.get(cardId), n }))
+    .filter((row) => row.card)
+    .sort((a, b) => b.n - a.n || a.card.word.localeCompare(b.card.word));
+
+  $('sum-empty').hidden = rows.length > 0;
+  $('sum-list').innerHTML = rows.map(({ card, n }) => `
+    <li class="sw">
+      <p class="sw-head">
+        <span class="en sw-word">${esc(card.word)}</span>
+        <span class="pos-tag">${esc(card.pos)}</span>
+        <span class="sw-count tnum">错 ${n} 次</span>
+      </p>
+      <p class="sw-cn">${esc(card.cn)}</p>
+    </li>`).join('');
+
+  $('btn-retry-wrong').disabled = rows.length === 0;
+
+  const back = $('btn-back-list');
+  if (S.sourceType === 'wrong' || S.sourceType === 'star') {
+    back.hidden = false;
+    back.textContent = S.sourceType === 'wrong' ? '回错题本' : '回星标生词本';
+    back.href = `study.html?unit=${S.sourceType}`;
+  } else {
+    back.hidden = true;
+  }
+}
+
+/* ========================== 错题本 / 星标视图 ========================== */
+
+function mistakeIds() {
+  return mistakeList(S.state).map((r) => r.cardId).filter((id) => CARD_BY_ID.has(id));
+}
+function starIds() {
+  return starList(S.state).map((r) => r.cardId).filter((id) => CARD_BY_ID.has(id));
+}
+
+function groupEntries(raw) {
+  const items = raw.map((rec) => ({ rec, card: CARD_BY_ID.get(rec.cardId) })).filter((x) => x.card);
+  const byUnit = new Map();
+  for (const item of items) {
+    const key = item.card.unitId;
+    if (!byUnit.has(key)) byUnit.set(key, []);
+    byUnit.get(key).push(item);
+  }
+  const groups = [];
+  for (const [unitId, list] of byUnit) {
+    const unit = unitById(unitId);
+    const vol = unit ? volumeById(unit.volumeId) : null;
+    // 所属单元一律用卡片自带的 unitLabel（如「七年级上册 · Starter Unit 1」），不显示裸的 unitId
+    const labelled = list[0] && list[0].card ? list[0].card.unitLabel : '';
+    groups.push({
+      unitId,
+      label: labelled || (unit ? `${vol ? `${vol.label} · ` : ''}${unit.name}` : `未知单元（${unitId}）`),
+      sortVol: vol ? VOCAB.volumes.indexOf(vol) : 99,
+      sortOrder: unit ? unit.order : 999,
+      rows: list.sort((a, b) => (b.rec.count || 0) - (a.rec.count || 0) || a.card.word.localeCompare(b.card.word)),
+    });
+  }
+  groups.sort((a, b) => a.sortVol - b.sortVol || a.sortOrder - b.sortOrder);
+  return { groups, missing: raw.length - items.length };
+}
+
+function modesHtml(modes) {
+  return (modes || []).map((m) => `<span class="tag">${esc(MODE_LABEL[m] || m)}</span>`).join('');
+}
+
+function renderList(kind) {
+  const isWrong = kind === 'wrong';
+  const raw = isWrong ? mistakeList(S.state) : starList(S.state);
+  const { groups, missing } = groupEntries(raw);
+  const container = isWrong ? wrongListEl : starListEl;
+  const empty = isWrong ? wrongEmptyEl : starEmptyEl;
+  const countEl = isWrong ? wrongCountEl : starCountEl;
+
+  const total = groups.reduce((sum, g) => sum + g.rows.length, 0);
+  countEl.textContent = isWrong
+    ? `共 ${total} 条待复习${missing ? `（另有 ${missing} 条不在当前词库中，已跳过）` : ''}`
+    : `共 ${total} 个词条${missing ? `（另有 ${missing} 条不在当前词库中，已跳过）` : ''}`;
+  (isWrong ? btnWrongPractice : btnStarPractice).disabled = total === 0;
+
+  container.innerHTML = groups.map((g) => `
+    <section class="grp">
+      <div class="grp-head">
+        <h2 class="grp-title">${esc(g.label)}</h2>
+        <span class="label tnum">${g.rows.length} 条</span>
+      </div>
+      <ul class="rows">${g.rows.map(({ rec, card }) => (isWrong ? wrongRowHtml(rec, card) : starRowHtml(card))).join('')}</ul>
+    </section>`).join('');
+  empty.hidden = total > 0;
+}
+
+function wrongRowHtml(rec, card) {
+  const modes = modesHtml(rec.modes);
+  return `<li class="row">
+    <div class="row-main">
+      <p class="row-word"><span class="en">${esc(card.word)}</span><span class="pos-tag">${esc(card.pos)}</span></p>
+      <p class="row-cn">${esc(card.cn)}</p>
+      <p class="row-meta">
+        <span class="tag tag-count tnum">错 ${rec.count || 1} 次</span>
+        ${modes || '<span class="tag">未记录模式</span>'}
+      </p>
+    </div>
+    <div class="row-actions">
+      ${sayBtnHtml(card.word)}
+      <button class="btn btn-sm" type="button" data-clear="${esc(card.id)}">已掌握</button>
+    </div>
+  </li>`;
+}
+
+function starRowHtml(card) {
+  return `<li class="row">
+    <div class="row-main">
+      <p class="row-word"><span class="en">${esc(card.word)}</span><span class="pos-tag">${esc(card.pos)}</span></p>
+      <p class="row-cn">${esc(card.cn)}</p>
+      <p class="row-meta">
+        <span class="tag${card.senseTotal > 1 ? '' : ' tag-soft'}">${card.senseTotal > 1 ? `义项 ${card.senseIndex} / ${card.senseTotal}` : '单词'}</span>
+        ${isStarred(S.state, card.id) ? '<span class="tag tag-star">★ 已星标</span>' : ''}
+      </p>
+    </div>
+    <div class="row-actions">
+      ${sayBtnHtml(card.word)}
+      <button class="btn btn-sm" type="button" data-unstar="${esc(card.id)}">取消星标</button>
+    </div>
+  </li>`;
+}
+
+/* ========================== 工具条绘制 ========================== */
+
+function paintCounts() {
+  navWrongCount.textContent = String(mistakeList(S.state).length);
+  navStarCount.textContent = String(starList(S.state).length);
+  paintStorage();                            // 每次写入后顺带刷新页脚的同步状态位
+}
+
+function paintStorage() {
+  const mode = getStorageMode();
+  const pending = hasPendingSync();
+  storageNote.dataset.mode = mode;
+  storageNote.textContent = (mode === 'local'
+    ? '本地模式（未连服务端）：进度与错题存在本机浏览器里。'
+    : '已连接服务端：进度、错题与星标自动同步。')
+    + (pending ? '有改动待同步。' : '');
+}
+
+function paintToolbar() {
+  modeEnBtn.setAttribute('aria-pressed', S.mode === 'en' ? 'true' : 'false');
+  modePosBtn.setAttribute('aria-pressed', S.mode === 'pos' ? 'true' : 'false');
+  btnShuffle.setAttribute('aria-pressed', S.shuffled ? 'true' : 'false');
+  btnSense.setAttribute('aria-pressed', S.senseSplit ? 'true' : 'false');
+  btnSense.textContent = S.senseSplit ? '义项拆卡' : '整词合并';
+  btnSense.title = S.senseSplit
+    ? '一词多义拆成多张卡（当前）；点一下改成整词合并。'
+    : '同一个词只出一张卡（当前）；点一下改成按义项拆卡。';
+}
+
+function paintStar() {
+  const card = S.queue[S.idx];
+  const on = card ? isStarred(S.state, card.id) : false;
+  btnStar.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btnStar.textContent = on ? '★ 已星标' : '☆ 星标';
+  btnStar.title = on ? '从星标生词本移除' : '加入星标生词本';
+}
+
+function paintHead() {
+  unitKickerEl.textContent = S.unitKicker || '—';
+  unitSubEl.textContent = S.unitSub || '';
+  btnExit.href = S.sourceType === 'unit'
+    ? 'units.html'
+    : `study.html?unit=${S.sourceType}`;
+}
+
+/* ========================== 轮次控制 ========================== */
+
+function buildRoundQueue() {
+  if (S.roundIds && S.roundIds.length) {
+    return buildQueue({ ids: S.roundIds, shuffled: S.shuffled, senseSplit: S.senseSplit });
+  }
+  if (S.sourceType === 'unit') {
+    return buildQueue({ unitId: S.unitId, shuffled: S.shuffled, senseSplit: S.senseSplit });
+  }
+  const ids = S.sourceType === 'wrong' ? mistakeIds() : starIds();
+  S.roundIds = ids;
+  return buildQueue({ ids, shuffled: S.shuffled, senseSplit: S.senseSplit });
+}
+
+function beginRound({ resume = false } = {}) {
+  cancelPending();
+  S.correct = 0;
+  S.wrong = 0;
+  S.wrongIds = new Map();
+  S.answered = false;
+  S.startedAt = Date.now();
+  S.finishedAt = 0;
+
+  let idx = 0;
+  if (resume) {
+    const p = getProgress(S.state, S.unitKey);
+    if (p && p.total === S.queue.length
+      && Number.isFinite(p.index) && p.index > 0 && p.index < S.queue.length) {
+      idx = Math.floor(p.index);
+    }
+  }
+  S.idx = Math.max(0, Math.min(idx, Math.max(0, S.queue.length - 1)));
+
+  buildPosChips();
+  paintToolbar();
+  paintHead();
+  feedbackEl.innerHTML = '';
+  renderQuestion();
+  updateMeter();
+  updateUrl();
+  if (resume && S.idx > 0) setStatus(`已从上次位置继续：第 ${S.idx + 1} 张。`);
+  else setStatus('');
+}
+
+function updateUrl() {
+  if (S.view !== 'study' && S.view !== 'summary') return;
+  const p = new URLSearchParams();
+  p.set('unit', S.unitKey || rawUnit || '');
+  p.set('mode', S.mode);
+  p.set('shuffle', S.shuffled ? '1' : '0');
+  p.set('sense', S.senseSplit ? 'split' : 'merge');
+  if (S.practice) p.set('practice', '1');
+  const qs = p.toString();
+  if (location.search.replace(/^\?/, '') !== qs) {
+    history.replaceState(null, '', `${location.pathname}?${qs}`);
+  }
+}
+
+function restartRound(kind) {
+  cancelPending();
+  if (kind === 'wrong') {
+    const ids = [...S.wrongIds.keys()];
+    if (!ids.length) return;
+    S.roundIds = ids;
+    S.unitKicker = S.sourceType === 'unit' ? (unitById(S.unitId) ? unitById(S.unitId).name : '全部单元') : S.unitKicker;
+    S.unitSub = `重背错题 · ${ids.length} 个词条`;
+  } else {
+    if (S.sourceType === 'unit' && !S.roundIds) S.unitSub = S.baseSub;
+  }
+  S.queue = buildRoundQueue();
+  beginRound({ resume: false });
+  showView('study');
+}
+
+async function switchMode(mode) {
+  if (mode === S.mode) return;
+  S.mode = mode;
+  S.queue = buildRoundQueue();
+  beginRound({ resume: false });
+  persistProgress(0);
+  await saveSettingsSafe();
+  setStatus(mode === 'en' ? '已切到背英文，本轮从头开始。' : '已切到背词性：词性与释义都对才算对，本轮从头开始。');
+}
+
+function saveSettingsSafe() {
+  return saveSettings({ senseSplit: S.senseSplit, ttsAccent: S.ttsVoice ? S.ttsVoice.lang : 'en-GB' })
+    .then((next) => { S.state = next; })
+    .catch(() => { /* 离线忽略 */ });
+}
+
+async function toggleShuffle() {
+  S.shuffled = !S.shuffled;
+  S.queue = buildRoundQueue();
+  beginRound({ resume: false });
+  persistProgress(0);
+  setStatus(S.shuffled ? '已开启乱序，本轮重新开始。' : '已关闭乱序，本轮按词表顺序重新开始。');
+}
+
+async function toggleSenseSplit() {
+  S.senseSplit = !S.senseSplit;
+  S.queue = buildRoundQueue();
+  beginRound({ resume: false });
+  persistProgress(0);
+  await saveSettingsSafe();
+  setStatus(S.senseSplit
+    ? '已改为按义项拆卡：一词多义各出一张卡。'
+    : '已改为整词合并：同一个词只出一张卡，义项全部列出。');
+}
+
+async function toggleStarCurrent() {
+  const card = S.queue[S.idx];
+  if (!card) return;
+  const on = isStarred(S.state, card.id);
+  try { S.state = await toggleStar(card.id, card.unitId); } catch { /* 忽略 */ }
+  paintStar();
+  paintCounts();
+  setStatus(on ? '已取消星标，本轮结束后不再出现在生词本里。' : '已加入星标生词本。');
+}
+
+/* ========================== 朗读 ========================== */
+
+function pickVoice() {
+  if (!('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices() || [];
+  if (!voices.length) return null;
+  return voices.find((v) => /^en[-_]GB/i.test(v.lang))
+    || voices.find((v) => /^en[-_]US/i.test(v.lang))
+    || voices.find((v) => /^en/i.test(v.lang))
+    || null;
+}
+
+function paintTts() {
+  if (!S.ttsSupported) {
+    btnSpeak.disabled = true;
+    btnSpeak.title = '当前浏览器不支持朗读（Web Speech API 不可用）。';
+    btnSpeak.setAttribute('aria-disabled', 'true');
+    return;
+  }
+  if (!S.ttsVoice) {
+    btnSpeak.disabled = true;
+    btnSpeak.title = '未找到英语语音包，朗读暂不可用。';
+    btnSpeak.setAttribute('aria-disabled', 'true');
+    return;
+  }
+  btnSpeak.disabled = false;
+  btnSpeak.removeAttribute('aria-disabled');
+  btnSpeak.title = `朗读英文单词（${S.ttsVoice.lang}）`;
+}
+
+function initTts() {
+  S.ttsSupported = ('speechSynthesis' in window);
+  if (!S.ttsSupported) { paintTts(); return; }
+  const refresh = () => { S.ttsVoice = pickVoice(); paintTts(); };
+  refresh();
+  try { window.speechSynthesis.addEventListener('voiceschanged', refresh); } catch { /* 老浏览器忽略 */ }
+  setTimeout(refresh, 600);
+  setTimeout(refresh, 1600);
+}
+
+function speak(text) {
+  if (!S.ttsSupported || !text) return;
+  try {
+    const utter = new SpeechSynthesisUtterance(String(text));
+    if (S.ttsVoice) { utter.voice = S.ttsVoice; utter.lang = S.ttsVoice.lang; }
+    utter.rate = 0.92;
+    utter.pitch = 1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+  } catch {
+    setStatus('朗读失败，请检查系统的语音设置。');
+  }
+}
+
+/* ========================== 导出错题本 ========================== */
+
+async function exportWrongbook() {
+  setStatus('正在导出错题本…');
+  try {
+    const res = await fetch(exportWrongbookUrl(), { headers: { 'X-Word-Uid': getUid() } });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const md = await res.text();
+    if (!md.trim()) throw new Error('empty');
+    downloadText('wrongbook.md', md);
+    setStatus('已导出错题本（服务端生成）。');
+  } catch {
+    // buildWrongbookMarkdown 是 async：不传 lookup 时它会自己加载完整卡片索引
+    const md = await buildWrongbookMarkdown(S.state);
+    downloadText('wrongbook.md', md);
+    setStatus('已导出错题本（本地生成，服务端不可用）。');
+  }
+}
+
+/* ========================== 路由 ========================== */
+
+function setupUnit(unitId) {
+  const unit = unitById(unitId);
+  const progress = getProgress(S.state, unitId);
+  const vol = unit ? volumeById(unit.volumeId) : null;
+
+  S.sourceType = 'unit';
+  S.unitId = unitId;
+  S.unitKey = unitId;
+  S.roundIds = null;
+  S.practice = false;
+  S.mode = qMode === 'pos' ? 'pos' : (qMode === 'en' ? 'en'
+    : ((progress && progress.mode === 'pos') ? 'pos' : 'en'));
+  S.shuffled = qShuffle != null ? qShuffle === '1' : !!(progress && progress.shuffled);
+
+  S.queue = buildRoundQueue();
+  S.unitKicker = unit ? unit.name : '全部单元';
+  S.baseSub = `${vol ? `${vol.label} · ` : ''}共 ${S.queue.length} 张卡`;
+  S.unitSub = S.baseSub;
+
+  beginRound({ resume: true });
+  showView('study');
+}
+
+function setupList(kind, practice) {
+  S.sourceType = kind;
+  S.unitId = '';
+  S.unitKey = kind;
+  S.roundIds = null;
+  S.practice = !!practice;
+  S.mode = qMode === 'pos' ? 'pos' : 'en';
+  S.shuffled = qShuffle != null ? qShuffle === '1' : false;
+
+  if (!practice) {
+    renderList(kind);
+    showView(kind);
+    return;
+  }
+
+  const ids = kind === 'wrong' ? mistakeIds() : starIds();
+  if (!ids.length) {
+    S.practice = false;
+    renderList(kind);
+    showView(kind);
+    setStatus(kind === 'wrong' ? '错题本是空的，先去背几组吧。' : '生词本还是空的，背记时点「☆ 星标」就能收词。');
+    return;
+  }
+  S.roundIds = ids;
+  S.queue = buildQueue({ ids, shuffled: S.shuffled, senseSplit: S.senseSplit });
+  S.unitKicker = kind === 'wrong' ? '错题重练' : '星标重练';
+  S.baseSub = `${ids.length} 个词条`;
+  S.unitSub = S.baseSub;
+  beginRound({ resume: true });
+  showView('study');
+}
+
+function showEmptyView() {
+  const msg = $('empty-msg');
+  msg.innerHTML = rawUnit
+    ? `没有找到单元 <span class="en">${esc(rawUnit)}</span>，可能是链接写错了或者词库已更新。`
+    : '背记界面需要指定一个单元，例如 <span class="en">study.html?unit=7a-u1&amp;mode=en</span>。';
+  const last = lastStudied(S.state);
+  const btn = $('btn-empty-continue');
+  if (last && (last.unitId === 'wrong' || last.unitId === 'star')) {
+    btn.hidden = false;
+    btn.textContent = last.unitId === 'wrong' ? '继续上次：错题本' : '继续上次：星标生词本';
+    btn.href = `study.html?unit=${last.unitId}`;
+  } else {
+    const unit = last ? unitById(last.unitId) : null;
+    if (unit) {
+      btn.hidden = false;
+      btn.textContent = `继续上次：${unit.name}`;
+      btn.href = `study.html?unit=${encodeURIComponent(unit.id)}&mode=${last.mode === 'pos' ? 'pos' : 'en'}`;
+    } else {
+      btn.hidden = true;
+    }
+  }
+  showView('empty');
+}
+
+function route() {
+  if (rawUnit === 'wrong') { setupList('wrong', qPractice); return; }
+  if (rawUnit === 'star') { setupList('star', qPractice); return; }
+  if (rawUnit === 'all' || unitById(rawUnit)) { setupUnit(rawUnit); return; }
+  showEmptyView();
+}
+
+/* ========================== 事件绑定 ========================== */
+
+formEl.addEventListener('submit', safe((e) => {
+  e.preventDefault();                 // 关键：Enter / 点提交都不刷新页面
+  return submitAnswer();
+}));
+
+for (const el of [inEn, inCn]) {
+  el.addEventListener('keydown', safe((e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;   // Shift＋Enter 在文本框里换行
+    e.preventDefault();
+    return submitAnswer();
+  }));
+}
+
+posChips.addEventListener('click', safe((e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip || !posChips.contains(chip)) return;
+  if (S.pendingAdvance) { cancelPending(); advance(); }   // 上一题已答对，用户其实已经开始下一题
+  const value = chip.dataset.pos;
+  const next = chip.getAttribute('aria-pressed') !== 'true';
+  for (const c of posChips.querySelectorAll('.chip')) c.setAttribute('aria-pressed', 'false');
+  chip.setAttribute('aria-pressed', next ? 'true' : 'false');
+  S.posSel = next ? value : '';
+}));
+
+btnNext.addEventListener('click', safe(() => { advance(); }));
+modeEnBtn.addEventListener('click', safe(() => switchMode('en')));
+modePosBtn.addEventListener('click', safe(() => switchMode('pos')));
+btnShuffle.addEventListener('click', safe(() => toggleShuffle()));
+btnSense.addEventListener('click', safe(() => toggleSenseSplit()));
+btnStar.addEventListener('click', safe(() => toggleStarCurrent()));
+btnSpeak.addEventListener('click', safe(() => {
+  const card = S.queue[S.idx];
+  if (card) speak(card.word);
+}));
+
+btnExit.addEventListener('click', safe(async (e) => {
+  e.preventDefault();
+  await persistProgress(resumeIndex());     // 退出前存档，回来能接着背
+  location.href = btnExit.getAttribute('href') || 'units.html';
+}));
+
+$('btn-retry-wrong').addEventListener('click', safe(() => restartRound('wrong')));
+$('btn-again').addEventListener('click', safe(() => restartRound('again')));
+$('btn-export').addEventListener('click', safe(() => exportWrongbook()));
+
+btnWrongPractice.addEventListener('click', safe(() => {
+  const ids = mistakeIds();
+  if (!ids.length) { setStatus('没有待复习的错题。'); return; }
+  startPracticeFromList('wrong', ids);
+}));
+btnStarPractice.addEventListener('click', safe(() => {
+  const ids = starIds();
+  if (!ids.length) { setStatus('生词本里还没有词条。'); return; }
+  startPracticeFromList('star', ids);
+}));
+
+function startPracticeFromList(kind, ids) {
+  S.practice = true;
+  S.roundIds = ids;
+  S.mode = qMode === 'pos' ? 'pos' : S.mode;
+  S.queue = buildQueue({ ids, shuffled: S.shuffled, senseSplit: S.senseSplit });
+  S.unitKicker = kind === 'wrong' ? '错题重练' : '星标重练';
+  S.baseSub = `${ids.length} 个词条`;
+  S.unitSub = S.baseSub;
+  $('btn-back-list').hidden = false;
+  beginRound({ resume: false });
+  showView('study');
+  setStatus(`开始重练：共 ${ids.length} 个词条。`);
+}
+
+wrongListEl.addEventListener('click', safe(async (e) => {
+  const btn = e.target.closest('button[data-clear]');
+  if (!btn) return;
+  const cardId = btn.dataset.clear;
+  S.state = await clearMistake(cardId);
+  paintCounts();
+  renderList('wrong');
+  const card = CARD_BY_ID.get(cardId);
+  setStatus(`已销号：${card ? card.word : cardId}。`);
+}));
+
+starListEl.addEventListener('click', safe(async (e) => {
+  const btn = e.target.closest('button[data-unstar]');
+  if (!btn) return;
+  const cardId = btn.dataset.unstar;
+  const card = CARD_BY_ID.get(cardId);
+  S.state = await toggleStar(cardId, card ? card.unitId : '');
+  paintCounts();
+  renderList('star');
+  setStatus(`已取消星标：${card ? card.word : cardId}。`);
+}));
+
+document.addEventListener('click', safe((e) => {
+  const btn = e.target.closest('button[data-say]');
+  if (btn) speak(btn.dataset.say);
+}));
+
+window.addEventListener('pagehide', () => {
+  if (S.queue.length && S.view === 'study') persistProgress(resumeIndex());
+});
+
+/* ========================== 启动 ========================== */
+
+async function boot() {
+  try { S.state = await loadState(); } catch { /* api 层已兜底 */ }
+  if (!S.state || typeof S.state !== 'object') {
+    S.state = { version: 1, mistakes: {}, stars: {}, progress: {}, settings: {} };
+  }
+  const settings = mergeSettings(S.state.settings);
+  S.senseSplit = qSense ? qSense !== 'merge' : settings.senseSplit !== false;
+
+  initTts();
+  paintCounts();          // 页眉角标 + 页脚同步状态
+  route();
+}
+
+boot().catch(fatal);
+
+/* 排查用只读快照（与 assets 里的 window.DSH_VOCAB 一致的做法） */
+window.DSH_STUDY = {
+  snapshot: () => {
+    const card = S.queue[S.idx] || null;
+    return {
+      view: S.view, unitKey: S.unitKey, mode: S.mode, shuffled: S.shuffled,
+      senseSplit: S.senseSplit, index: S.idx, total: S.queue.length,
+      correct: S.correct, wrong: S.wrong, wrongIds: [...S.wrongIds.keys()],
+      answered: S.answered, cardId: card ? card.id : null, cardWord: card ? card.word : null,
+      storage: getStorageMode(),
+    };
+  },
+};
+</script>
+</body>
+</html>

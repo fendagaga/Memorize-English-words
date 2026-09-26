@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="初中英语词表单元索引：按年级与册次筛选单元卡片，三种视图密度，选中单元即可开始背英文或背释义。">
+<title>单元索引 · 初中英语词表</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&amp;family=Noto+Sans+SC:wght@300;400;500;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/paper.css">
+<style>
+  /* ======================================================================
+     单元索引 —— 交互骨架取自 14 号页（分组筛选 / 三档密度 / 底部档案栏），
+     视觉换成 07 号页的宣纸柔和版：发丝细线、大留白、宋体标题、克制的朱砂一点。
+     不使用硬阴影与粗描边。
+     ====================================================================== */
+
+  dl, dt, dd { margin: 0; }
+  .masthead p, .controls p, .card p, .detail p, .foot p, .empty p { margin: 0; }
+  /* 中文按标点断行，不把「七年级上册」这类词组拦腰截断；超长串再退化到任意断行 */
+  .lede, .hint, .dsub, .empty p { word-break: keep-all; overflow-wrap: anywhere; }
+
+  /* ---------------- 界格线叠加（对照 14 号页的基线网格） ---------------- */
+  .gridlines {
+    position: fixed; inset: 0; z-index: 20; pointer-events: none;
+    opacity: 0;
+    transition: opacity .25s var(--ease);
+    background-image:
+      repeating-linear-gradient(90deg, rgba(168, 51, 31, .055) 0 1px, transparent 1px 28px),
+      repeating-linear-gradient(0deg, rgba(34, 30, 24, .05) 0 1px, transparent 1px 28px);
+  }
+  body.grid-on .gridlines { opacity: 1; }
+
+  /* ---------------- 页眉 ---------------- */
+  .masthead { padding-top: clamp(20px, 3vw, 42px); }
+
+  .mh-top {
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    justify-content: space-between; gap: 6px 18px;
+    padding-bottom: 9px;
+  }
+
+  .modehint {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 11.5px; letter-spacing: .14em; color: var(--ink-soft);
+  }
+  .modehint .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint);
+    box-shadow: 0 0 0 3px var(--line-soft);
+  }
+  .modehint[data-mode="server"] .dot { background: var(--indigo); }
+  .modehint[data-mode="local"] { color: var(--cinnabar); }
+  .modehint[data-mode="local"] .dot { background: var(--cinnabar); box-shadow: 0 0 0 3px var(--cinnabar-wash); }
+
+  .head {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    gap: clamp(16px, 3vw, 54px);
+    align-items: end;
+    padding: clamp(18px, 2.6vw, 32px) 0 clamp(14px, 2vw, 22px);
+  }
+
+  .headmain { min-width: 0; }
+  .title {
+    font-size: clamp(30px, 6.2vw, 64px);
+    letter-spacing: .06em;
+    line-height: 1.12;
+  }
+  .title .accent { border-bottom: 3px solid var(--cinnabar); }
+  .lede {
+    max-width: 42ch;
+    padding-top: clamp(10px, 1.4vw, 16px);
+    color: var(--ink-mid);
+    font-size: clamp(14px, 1.05vw, 16.5px);
+  }
+
+  .headside {
+    display: flex; flex-direction: column; align-items: flex-end;
+    gap: 12px; min-width: 0;
+  }
+  .headnav { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  .headlink { white-space: nowrap; }
+  .headlink .n { font-variant-numeric: tabular-nums; font-weight: 600; }
+  /* N 为 0 时依旧显示，只把线条与墨色调淡一档（不靠透明度，保住对比度） */
+  .headlink.is-zero { color: var(--ink-soft); border-color: var(--line); background: transparent; }
+  .headlink.is-zero:hover { color: var(--ink); background: var(--paper-raise); border-color: var(--line-strong); }
+
+  .stats {
+    font-size: clamp(12.5px, .95vw, 14.5px); letter-spacing: .04em;
+    color: var(--ink-soft); text-align: right;
+  }
+  .stats b {
+    font-family: var(--serif-cn); font-weight: 600;
+    font-size: 1.35em; letter-spacing: .02em; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .stats .sep { color: var(--ink-faint); padding: 0 4px; }
+
+  /* ---------------- 控制台 ---------------- */
+  .controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: clamp(12px, 2vw, 30px);
+    align-items: start;
+    padding: clamp(16px, 2.4vw, 30px) 0 clamp(10px, 1.6vw, 18px);
+  }
+  /* 分组并排铺开，窄屏自然折行；一组内的按钮永不被压到换行 */
+  .ctl-main {
+    display: flex; flex-wrap: wrap; align-items: start;
+    gap: 13px clamp(16px, 2.4vw, 34px);
+    min-width: 0;
+  }
+  .ctl-block { flex: 0 1 auto; min-width: 0; }
+  .ctl-label {
+    display: block;
+    font-size: 11.5px; font-weight: 500; letter-spacing: .3em;
+    color: var(--ink-soft); padding-bottom: 7px;
+  }
+  .ctl-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .count { text-align: right; border-bottom: 1px solid var(--line-strong); padding-bottom: 6px; }
+  .count-n {
+    display: block;
+    font-family: var(--serif-cn); font-weight: 600;
+    font-size: clamp(28px, 3.6vw, 48px); line-height: 1; letter-spacing: .02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .count small {
+    display: block; padding-top: 7px;
+    font-size: 11.5px; letter-spacing: .2em; color: var(--ink-soft);
+  }
+
+  .hint {
+    grid-column: 1 / -1;
+    padding-top: 2px;
+    font-size: 12.5px; color: var(--ink-soft);
+  }
+
+  /* ---------------- 卡片网格 ---------------- */
+  .gridwrap { padding-bottom: clamp(28px, 4vw, 58px); }
+
+  .unitgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(268px, 100%), 1fr));
+    gap: clamp(14px, 1.8vw, 26px);
+  }
+
+  .card.unit {
+    --band-1: var(--cinnabar-wash);
+    --band-2: rgba(168, 51, 31, .42);
+    display: flex; flex-direction: column; min-width: 0;
+    transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+                transform .18s var(--ease), background var(--dur) var(--ease);
+  }
+  .card.unit[data-volume="7b"] { --band-1: var(--indigo-wash); --band-2: rgba(47, 74, 92, .40); }
+  .card.unit[data-volume="8a"] { --band-1: var(--gold-wash); --band-2: rgba(169, 133, 47, .46); }
+
+  .card.unit:hover { border-color: var(--line-strong); box-shadow: var(--shadow-soft); transform: translateY(-2px); }
+  .card.unit:focus-within { border-color: var(--line-strong); }
+
+  .card.unit[data-selected="true"] { border-color: var(--cinnabar); box-shadow: var(--shadow-soft); }
+  .card.unit[data-selected="true"]::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--cinnabar);
+  }
+  .card.unit[data-selected="true"] .band { background: var(--cinnabar); }
+
+  .band {
+    display: block; height: 6px; border-radius: 2px 2px 0 0;
+    background: linear-gradient(90deg, var(--band-2) 0 26%, var(--band-1) 26% 100%);
+  }
+
+  .body {
+    display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0;
+    padding: clamp(11px, 1.3vw, 15px) clamp(13px, 1.5vw, 19px) clamp(13px, 1.5vw, 18px);
+  }
+
+  .numrow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .num {
+    font-family: var(--serif-cn); font-weight: 600; line-height: 1;
+    font-size: clamp(34px, 3.6vw, 46px); letter-spacing: .01em; color: var(--ink);
+    border-bottom: 2px solid var(--band-2); padding-bottom: 2px;
+  }
+  .voltag {
+    flex: 0 0 auto; white-space: nowrap;
+    font-size: 10.5px; letter-spacing: .16em; color: var(--ink-soft);
+    border: 1px solid var(--line); padding: 2px 7px 1px;
+  }
+
+  .ct { font-size: clamp(17px, 1.35vw, 20px); line-height: 1.32; }
+  /* 触区：按钮撑满整行、至少 44px 高；内层 .pname 只负责文字与那根下划线 */
+  .pick {
+    display: block; width: 100%; min-height: 44px;
+    font: inherit; font-family: var(--serif-cn); font-weight: 600;
+    color: var(--ink); background: none; border: 0; margin: 0;
+    padding: 8px 0; text-align: left; cursor: pointer;
+  }
+  .pname {
+    display: inline-block;
+    border-bottom: 1px solid transparent;
+    transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  }
+  .pick:hover .pname { color: var(--cinnabar); border-bottom-color: var(--cinnabar); }
+  .card.unit[data-selected="true"] .pname { color: var(--cinnabar); border-bottom-color: var(--cinnabar); }
+
+  .meta {
+    display: grid; grid-template-columns: auto minmax(0, 1fr);
+    gap: 3px 10px; margin-top: 2px; padding-top: 9px;
+    border-top: 1px solid var(--line-soft);
+    font-size: 12.5px;
+  }
+  .meta dt { font-size: 11px; letter-spacing: .16em; color: var(--ink-soft); padding-top: 2px; }
+  .meta dd { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .posline {
+    margin-top: auto; padding-top: 2px;
+    font-family: var(--mono-en); font-size: 11.5px; line-height: 1.7;
+    color: var(--ink-soft); overflow-wrap: anywhere;
+  }
+
+  /* —— 密排：缩小卡面、收起次要信息 —— */
+  .unitgrid[data-density="dense"] {
+    grid-template-columns: repeat(auto-fill, minmax(min(198px, 100%), 1fr));
+    gap: clamp(10px, 1.2vw, 16px);
+  }
+  .unitgrid[data-density="dense"] .body { padding: 11px 13px 13px; gap: 6px; }
+  .unitgrid[data-density="dense"] .num { font-size: clamp(26px, 2.6vw, 34px); }
+  .unitgrid[data-density="dense"] .ct,
+  .unitgrid[data-density="dense"] .pick { font-size: clamp(14.5px, 1.05vw, 16.5px); }
+  .unitgrid[data-density="dense"] .meta { font-size: 11.5px; gap: 2px 8px; padding-top: 7px; }
+  .unitgrid[data-density="dense"] .meta dt { font-size: 10px; letter-spacing: .12em; }
+  .unitgrid[data-density="dense"] .posline,
+  .unitgrid[data-density="dense"] .voltag { display: none; }
+
+  /* —— 清单：整行横向排布 —— */
+  .unitgrid[data-density="list"] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0; border-top: 1px solid var(--line-strong);
+  }
+  .unitgrid[data-density="list"] .card.unit {
+    position: relative; flex-direction: row; padding-left: 5px;
+    background: transparent; border: 0;
+    border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none;
+  }
+  .unitgrid[data-density="list"] .card.unit::after { display: none; }
+  .unitgrid[data-density="list"] .card.unit:hover {
+    transform: none; background: var(--paper-raise);
+    border-bottom-color: var(--line-strong);
+  }
+  .unitgrid[data-density="list"] .card.unit[data-selected="true"] {
+    background: var(--cinnabar-wash); border-bottom-color: var(--cinnabar);
+  }
+  .unitgrid[data-density="list"] .card.unit[data-selected="true"]::before { display: none; }
+  .unitgrid[data-density="list"] .band {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 4px; height: auto; border-radius: 0;
+    background: var(--band-2);
+  }
+  .unitgrid[data-density="list"] .body {
+    flex-direction: row; flex-wrap: wrap; align-items: baseline;
+    gap: 4px clamp(10px, 2vw, 26px);
+    padding: clamp(10px, 1.2vw, 15px) clamp(10px, 1.4vw, 18px);
+  }
+  .unitgrid[data-density="list"] .numrow { flex: 0 0 auto; }
+  .unitgrid[data-density="list"] .num { font-size: clamp(20px, 2.2vw, 27px); border-bottom-width: 1px; }
+  .unitgrid[data-density="list"] .ct { flex: 1 1 200px; min-width: 0; }
+  .unitgrid[data-density="list"] .meta {
+    flex: 0 0 auto; border-top: 0; padding-top: 0; margin: 0;
+    grid-template-columns: repeat(4, auto auto); column-gap: 10px; row-gap: 0;
+  }
+  .unitgrid[data-density="list"] .meta dt { padding-top: 0; font-size: 10.5px; }
+  .unitgrid[data-density="list"] .posline { display: none; }
+
+  /* ---------------- 空结果 ---------------- */
+  .empty {
+    grid-column: 1 / -1;
+    padding: clamp(26px, 4vw, 54px) clamp(18px, 3vw, 34px);
+    text-align: center;
+    background: var(--paper-deep);
+    border: 1px dashed var(--line-strong);
+  }
+  .empty strong {
+    display: block;
+    font-family: var(--serif-cn); font-weight: 600;
+    font-size: clamp(20px, 2.6vw, 28px); letter-spacing: .05em;
+  }
+  .empty p { max-width: 36ch; margin: 10px auto 0; font-size: 14px; color: var(--ink-soft); }
+  .empty .btn { margin-top: 18px; }
+
+  /* ---------------- 底部档案栏 ---------------- */
+  .detail {
+    position: sticky; bottom: 0; z-index: 30;
+    padding: clamp(10px, 1.4vw, 15px) var(--gut);
+    background: var(--paper-raise);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -14px 34px -26px rgba(34, 30, 24, .5);
+    transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  }
+  .detail[data-active="true"] { border-top: 2px solid var(--cinnabar); }
+  .detail-inner {
+    width: min(100%, var(--maxw)); margin-inline: auto;
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 8px clamp(14px, 2vw, 30px); justify-content: space-between;
+  }
+  .dmain { flex: 1 1 240px; min-width: 0; }
+  .dtitle { font-family: var(--serif-cn); font-weight: 600; font-size: clamp(17px, 1.5vw, 22px); line-height: 1.3; }
+  .dsub { padding-top: 3px; font-size: 12.5px; color: var(--ink-soft); }
+  .dpos {
+    padding-top: 3px; font-family: var(--mono-en); font-size: 11.5px;
+    line-height: 1.7; color: var(--ink-soft); overflow-wrap: anywhere;
+  }
+
+  .dctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+  .dgroup { display: flex; gap: 6px; }
+  /* 档案栏里的模式与乱序按钮也按 44px 热区，手机拇指够得着 */
+  .dctl .btn-sm { min-height: 44px; }
+
+  .d-close {
+    flex: 0 0 auto;
+    font: inherit; font-size: 13px; font-weight: 500; letter-spacing: .06em;
+    min-height: 44px; padding: 6px 13px;
+    color: var(--ink-mid); background: transparent;
+    border: 1px solid var(--line); border-radius: var(--radius);
+    cursor: pointer;
+    transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  }
+  .d-close:hover { color: var(--cinnabar); border-color: var(--cinnabar); background: var(--cinnabar-wash); }
+
+  /* ---------------- 页脚 ---------------- */
+  .foot { border-top: 1px solid var(--line); margin-top: clamp(18px, 3vw, 38px); padding: clamp(20px, 3vw, 34px) 0 clamp(24px, 3.4vw, 42px); }
+  .foot-in {
+    display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: clamp(16px, 2.6vw, 44px); align-items: start;
+  }
+  .foot h2 { font-size: clamp(17px, 1.6vw, 22px); }
+  .foot p { max-width: 46ch; padding-top: 8px; font-size: 13.5px; color: var(--ink-soft); }
+  .footnav { display: flex; flex-wrap: wrap; gap: 4px 20px; justify-content: flex-end; font-size: 13.5px; }
+  /* 页脚链接也补到 44px 热区（文字本身不动） */
+  .footnav a {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; min-width: 44px; padding: 4px 2px;
+  }
+  .colophon {
+    display: flex; flex-wrap: wrap; gap: 6px 20px; justify-content: space-between;
+    padding-top: clamp(16px, 2.4vw, 28px);
+    font-size: 11.5px; letter-spacing: .1em; color: var(--ink-soft);
+  }
+
+  /* ---------------- 窄屏 ---------------- */
+  @media (max-width: 860px) {
+    .head { grid-template-columns: minmax(0, 1fr); align-items: start; }
+    .headside { align-items: flex-start; }
+    .headnav { justify-content: flex-start; }
+    .stats { text-align: left; }
+    .controls { grid-template-columns: minmax(0, 1fr); }
+    .count { text-align: left; }
+    .foot-in { grid-template-columns: minmax(0, 1fr); }
+    .footnav { justify-content: flex-start; }
+  }
+  @media (max-width: 700px) {
+    .detail-inner {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px 10px; align-items: start;
+    }
+    .dmain { grid-column: 1; grid-row: 1; }
+    .d-close { grid-column: 2; grid-row: 1; }
+    .dctl { grid-column: 1 / -1; grid-row: 2; }
+  }
+  @media (max-width: 560px) {
+    .unitgrid[data-density="list"] .meta { grid-template-columns: repeat(2, auto auto); }
+    .unitgrid[data-density="list"] .ct { flex-basis: 100%; }
+    .dlabel { display: none; }   /* 按钮自带「背英文 / 背释义」字样，窄屏省下标签位 */
+    .dpos { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#unitgrid">跳到单元列表</a>
+<div class="gridlines" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="mh-top">
+      <p class="label">宣纸 · 初中英语词表</p>
+      <p class="modehint" id="mode-hint" data-mode="pending" aria-live="polite"><span class="dot" aria-hidden="true"></span>正在连接服务端……</p>
+    </div>
+
+    <div class="head rule-double">
+      <div class="headmain">
+        <h1 class="title">单元<span class="accent">索引</span></h1>
+        <p class="lede">按年级与册次翻检，挑中一个单元，选好背英文或背释义，就能开始。</p>
+      </div>
+      <div class="headside">
+        <nav class="headnav" aria-label="错题与星标">
+          <a class="btn headlink is-zero" id="link-wrong" href="study.html?unit=wrong">错题本 <span class="n tnum" id="n-wrong">0</span></a>
+          <a class="btn headlink is-zero" id="link-star" href="study.html?unit=star">星标 <span class="n tnum" id="n-star">0</span></a>
+          <a class="btn headlink" href="index.html">回首页</a>
+        </nav>
+        <p class="stats" id="stats" aria-live="polite">正在读取词库……</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="controls wrap" aria-labelledby="ctl-heading">
+    <h2 class="visually-hidden" id="ctl-heading">筛选与视图</h2>
+
+    <div class="ctl-main">
+      <div class="ctl-block">
+        <span class="ctl-label" id="lbl-grade">按年级</span>
+        <div class="ctl-row" role="group" aria-labelledby="lbl-grade" id="filter-grade">
+          <button class="btn" type="button" data-value="all" aria-pressed="true">全部年级</button>
+          <button class="btn" type="button" data-value="七年级" aria-pressed="false">七年级</button>
+          <button class="btn" type="button" data-value="八年级" aria-pressed="false">八年级</button>
+        </div>
+      </div>
+
+      <div class="ctl-block">
+        <span class="ctl-label" id="lbl-term">按册次</span>
+        <div class="ctl-row" role="group" aria-labelledby="lbl-term" id="filter-term">
+          <button class="btn" type="button" data-value="all" aria-pressed="true">全部册次</button>
+          <button class="btn" type="button" data-value="上册" aria-pressed="false">上册</button>
+          <button class="btn" type="button" data-value="下册" aria-pressed="false">下册</button>
+        </div>
+      </div>
+
+      <div class="ctl-block">
+        <span class="ctl-label" id="lbl-density">视图密度</span>
+        <div class="ctl-row" role="group" aria-labelledby="lbl-density" id="density">
+          <button class="btn" type="button" data-value="grid" aria-pressed="true">网格</button>
+          <button class="btn" type="button" data-value="dense" aria-pressed="false">密排</button>
+          <button class="btn" type="button" data-value="list" aria-pressed="false">清单</button>
+        </div>
+        <!-- 界格线是独立开关，不属于「视图密度」这组互斥选项，所以单独成组 -->
+        <div class="ctl-row" id="gridlines-row">
+          <button class="btn" type="button" id="gridlines" aria-pressed="false">界格线</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="count" id="count" aria-live="polite"><span class="count-n">—</span><small>正在读取词库</small></p>
+
+    <p class="hint">点卡片任意处即可把它调进下方档案栏，再点一次或按 Esc 放回去。用键盘时，选中卡片后焦点会直接落到「开始背记」上。</p>
+  </section>
+
+  <section class="gridwrap wrap" aria-labelledby="grid-heading">
+    <h2 class="visually-hidden" id="grid-heading">单元卡片</h2>
+    <div class="unitgrid" id="unitgrid" data-density="grid">
+      <div class="empty" id="empty" hidden>
+        <strong>这一格空着</strong>
+        <p>没有同时符合该年级与该册次的单元。换一组筛选，或者点下面的按钮从头来过。</p>
+        <button class="btn" type="button" id="reset-filters">清空筛选</button>
+      </div>
+    </div>
+  </section>
+
+  <aside class="detail" id="detail" aria-label="单元档案">
+    <div class="detail-inner">
+      <div class="dmain" aria-live="polite">
+        <p class="dtitle" id="d-title">尚未选中单元</p>
+        <p class="dsub" id="d-sub">点任意一张卡片，这里会显示词条数、义项数与词性构成。</p>
+        <p class="dpos" id="d-pos" hidden></p>
+      </div>
+
+      <div class="dctl" id="d-ctl" hidden>
+        <span class="label dlabel" id="lbl-mode">模式</span>
+        <div class="dgroup" role="group" aria-labelledby="lbl-mode" id="mode-group">
+          <button class="btn btn-sm" type="button" data-mode="en" aria-pressed="true">背英文</button>
+          <!-- 按钮写「背释义」：进到 study.html 是选词性＋写中文释义，用户感知的落点在释义；data-mode 值沿用 pos 不改 URL 契约 -->
+          <button class="btn btn-sm" type="button" data-mode="pos" aria-pressed="false">背释义</button>
+        </div>
+        <button class="btn btn-sm" type="button" id="shuffle" aria-pressed="false">乱序</button>
+        <a class="btn btn-primary" id="start" href="study.html">开始背记</a>
+      </div>
+
+      <button class="d-close" type="button" id="d-close" hidden>放回去（Esc）</button>
+    </div>
+  </aside>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-in">
+      <div>
+        <h2>这一页只读词库</h2>
+        <p>单元卡片全部由 data/vocab.js 渲染，筛选与视图切换都在浏览器里完成，不改动任何词条。错题与星标记在服务端，连不上服务端时退回本机存储。</p>
+      </div>
+      <nav class="footnav" aria-label="相关页面">
+        <a href="index.html">首页</a>
+        <a href="study.html?unit=wrong">错题本</a>
+        <a href="study.html?unit=star">星标生词本</a>
+      </nav>
+    </div>
+    <div class="colophon">
+      <span id="colophon-stats">词库读取中……</span>
+      <span>词库由 scripts/build.mjs 从「词语raw」编译而成</span>
+    </div>
+  </div>
+</footer>
+
+<template id="unit-tpl">
+  <article class="card unit">
+    <span class="band" aria-hidden="true"></span>
+    <div class="body">
+      <div class="numrow">
+        <span class="num" aria-hidden="true"></span>
+        <span class="voltag"></span>
+      </div>
+      <h3 class="ct"><button class="pick" type="button" aria-pressed="false"><span class="pname"></span></button></h3>
+      <dl class="meta">
+        <dt>词条</dt><dd class="v-entry"></dd>
+        <dt>义项</dt><dd class="v-card"></dd>
+        <dt>词性</dt><dd class="v-pos"></dd>
+        <dt>册次</dt><dd class="v-vol"></dd>
+      </dl>
+      <p class="posline"></p>
+    </div>
+  </article>
+</template>
+
+<script type="module">
+import { VOCAB, overview } from './assets/vocab.js';
+import { loadState, mistakeList, starList, getStorageMode } from './assets/api.js';
+
+/* ---------- 元素 ---------- */
+const grid = document.getElementById('unitgrid');
+const emptyBox = document.getElementById('empty');
+const countBox = document.getElementById('count');
+const statsBox = document.getElementById('stats');
+const colophonBox = document.getElementById('colophon-stats');
+const gridlinesBtn = document.getElementById('gridlines');
+const resetBtn = document.getElementById('reset-filters');
+const tpl = document.getElementById('unit-tpl');
+
+const detail = document.getElementById('detail');
+const dTitle = document.getElementById('d-title');
+const dSub = document.getElementById('d-sub');
+const dPos = document.getElementById('d-pos');
+const dCtl = document.getElementById('d-ctl');
+const closeBtn = document.getElementById('d-close');
+const startLink = document.getElementById('start');
+const shuffleBtn = document.getElementById('shuffle');
+const modeBox = document.getElementById('mode-group');
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+const GROUPS = {
+  grade: document.getElementById('filter-grade'),
+  term: document.getElementById('filter-term'),
+  density: document.getElementById('density')
+};
+
+/* ---------- 页面状态 ---------- */
+const state = { grade: 'all', term: 'all', density: 'grid', mode: 'en', shuffled: false };
+const volIndex = new Map(VOCAB.volumes.map((v, i) => [v.id, i]));
+const units = VOCAB.units.slice().sort((a, b) =>
+  (volIndex.get(a.volumeId) - volIndex.get(b.volumeId)) || (a.order - b.order));
+const unitMap = new Map(VOCAB.units.map((u) => [u.id, u]));
+
+let cards = [];
+let selected = null;       // 当前调进档案栏的卡片元素
+let selectedUnit = null;   // 对应的单元数据
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/* ======================================================================
+   1. 渲染 26 张单元卡片（数据全部来自 VOCAB.units）
+   ====================================================================== */
+function renderUnits() {
+  const frag = document.createDocumentFragment();
+  for (const u of units) {
+    const node = tpl.content.firstElementChild.cloneNode(true);
+    node.dataset.unitId = u.id;
+    node.dataset.grade = u.grade;
+    node.dataset.term = u.term;
+    node.dataset.volume = u.volumeId;
+
+    const volLabel = `${u.grade}${u.term}`;
+    node.querySelector('.num').textContent = pad2(u.order);
+    node.querySelector('.voltag').textContent = volLabel;
+    node.querySelector('.v-entry').textContent = String(u.entryCount);
+    node.querySelector('.v-card').textContent = String(u.cardCount);
+    node.querySelector('.v-pos').textContent = `${u.posPresent.length} 类`;
+    node.querySelector('.v-vol').textContent = volLabel;
+    node.querySelector('.posline').textContent = u.posPresent.join(' ');
+
+    const pick = node.querySelector('.pick');
+    node.querySelector('.pname').textContent = u.name;
+    pick.setAttribute('aria-label', `${u.name}，${volLabel}，${u.entryCount} 个词条，${u.cardCount} 个义项`);
+
+    frag.appendChild(node);
+  }
+  grid.insertBefore(frag, emptyBox);
+  return Array.from(grid.querySelectorAll('.card.unit'));
+}
+
+/* 从卡片的 <dl class="meta"> 里按 dt 取 dd（与 14 号页同一套读法） */
+function field(card, label) {
+  const dts = card.querySelectorAll('.meta dt');
+  const dds = card.querySelectorAll('.meta dd');
+  for (let i = 0; i < dts.length; i += 1) {
+    if (dts[i].textContent.replace(/\s+/g, '') === label) return dds[i].textContent.trim();
+  }
+  return '';
+}
+
+/* ======================================================================
+   2. 概览数字（26 单元 / 1298 词条 / 1451 义项，全部现算，不写死）
+   ====================================================================== */
+function renderStatsInto(el) {
+  if (!el) return;
+  const o = overview();
+  const parts = [[o.volumes, '册'], [o.units, '单元'], [o.entries, '词条'], [o.cards, '义项']];
+  el.textContent = '';
+  parts.forEach(([value, unitText], i) => {
+    if (i) {
+      const sep = document.createElement('span');
+      sep.className = 'sep';
+      sep.textContent = '·';
+      el.appendChild(sep);
+    }
+    const b = document.createElement('b');
+    b.textContent = String(value);
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(' ' + unitText));
+  });
+}
+
+function renderCount(shown) {
+  countBox.textContent = '';
+  const n = document.createElement('span');
+  n.className = 'count-n';
+  n.textContent = String(shown);
+  const small = document.createElement('small');
+  small.textContent = shown === 0 ? '没有符合条件的单元' : '个单元显示中';
+  countBox.append(n, small);
+}
+
+/* ======================================================================
+   3. 筛选与视图密度（分组内互斥，两组联动过滤）
+   ====================================================================== */
+function apply() {
+  let shown = 0;
+  for (const card of cards) {
+    const okGrade = state.grade === 'all' || card.dataset.grade === state.grade;
+    const okTerm = state.term === 'all' || card.dataset.term === state.term;
+    const ok = okGrade && okTerm;
+    card.hidden = !ok;
+    if (ok) shown += 1;
+  }
+  renderCount(shown);
+  emptyBox.hidden = shown !== 0;
+  // 被筛掉的卡片若正躺在档案栏里，先把它放回去
+  if (selected && selected.hidden) clearSelection(false);
+}
+
+function setGroup(key, value) {
+  state[key] = value;
+  const box = GROUPS[key];
+  for (const b of box.querySelectorAll('button[data-value]')) {
+    b.setAttribute('aria-pressed', b.dataset.value === value ? 'true' : 'false');
+  }
+  if (key === 'density') grid.setAttribute('data-density', value);  // 密度不动筛选结果，不重播计数
+  else apply();
+}
+
+function bindGroup(key) {
+  const box = GROUPS[key];
+  box.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-value]');
+    if (!btn || !box.contains(btn)) return;
+    if (state[key] === btn.dataset.value) return;
+    setGroup(key, btn.dataset.value);
+  });
+}
+
+function resetFilters() {
+  state.grade = 'all';
+  state.term = 'all';
+  for (const key of ['grade', 'term']) {
+    for (const b of GROUPS[key].querySelectorAll('button[data-value]')) {
+      b.setAttribute('aria-pressed', b.dataset.value === 'all' ? 'true' : 'false');
+    }
+  }
+  apply();
+  const first = GROUPS.grade.querySelector('button[data-value="all"]');
+  if (first) first.focus();
+}
+
+/* ======================================================================
+   4. 选中卡片 → 调进底部档案栏（再点取消、Esc 放回）
+   ====================================================================== */
+function updateStart() {
+  if (!selectedUnit) {
+    startLink.href = 'study.html';
+    return;
+  }
+  const mode = state.mode === 'pos' ? 'pos' : 'en';
+  startLink.href = `study.html?unit=${encodeURIComponent(selectedUnit.id)}&mode=${mode}&shuffle=${state.shuffled ? '1' : '0'}`;
+  const modeLabel = mode === 'en' ? '背英文' : '背释义';
+  startLink.setAttribute('aria-label', `开始背记 ${selectedUnit.name}，${modeLabel}${state.shuffled ? '，乱序' : ''}`);
+}
+
+function clearSelection(focusBack) {
+  if (selected) {
+    const pick = selected.querySelector('.pick');
+    selected.removeAttribute('data-selected');
+    if (pick) {
+      pick.setAttribute('aria-pressed', 'false');
+      if (focusBack) pick.focus();
+    }
+  }
+  selected = null;
+  selectedUnit = null;
+  dTitle.textContent = '尚未选中单元';
+  dSub.textContent = '点任意一张卡片，这里会显示词条数、义项数与词性构成。';
+  dPos.textContent = '';
+  dPos.hidden = true;
+  dCtl.hidden = true;
+  closeBtn.hidden = true;
+  detail.removeAttribute('data-active');
+}
+
+function select(card, fromKeyboard) {
+  if (selected === card) { clearSelection(false); return; }
+
+  const unit = unitMap.get(card.dataset.unitId) || null;
+  clearSelection(false);
+  selected = card;
+  selectedUnit = unit;
+
+  card.setAttribute('data-selected', 'true');
+  const pick = card.querySelector('.pick');
+  if (pick) pick.setAttribute('aria-pressed', 'true');
+
+  dTitle.textContent = (pick && pick.textContent.trim()) || (unit && unit.name) || '未命名单元';
+
+  const bits = [['词条', field(card, '词条')], ['义项', field(card, '义项')], ['册次', field(card, '册次')]];
+  dSub.textContent = bits.filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(' · ');
+
+  const posText = unit ? unit.posPresent.join(' ') : field(card, '词性');
+  dPos.textContent = posText ? `词性 ${posText}` : '';
+  dPos.hidden = !posText;
+
+  dCtl.hidden = false;
+  closeBtn.hidden = false;
+  detail.setAttribute('data-active', 'true');
+  updateStart();
+
+  // 键盘选中后把焦点送到主按钮，Tab 一圈就能走完「筛选 → 选卡 → 开始背记」
+  if (fromKeyboard) startLink.focus();
+}
+
+/* ======================================================================
+   5. 事件绑定
+   ====================================================================== */
+function bindEvents() {
+  bindGroup('grade');
+  bindGroup('term');
+  bindGroup('density');
+
+  gridlinesBtn.addEventListener('click', () => {
+    const on = gridlinesBtn.getAttribute('aria-pressed') === 'true';
+    gridlinesBtn.setAttribute('aria-pressed', on ? 'false' : 'true');
+    document.body.classList.toggle('grid-on', !on);
+  });
+
+  resetBtn.addEventListener('click', resetFilters);
+
+  grid.addEventListener('click', (ev) => {
+    const card = ev.target.closest('.card.unit');
+    if (!card) return;
+    // 键盘触发的 click（detail === 0）才搬焦点；鼠标点击不打扰
+    const fromKeyboard = ev.detail === 0 && selected !== card;
+    select(card, fromKeyboard);
+  });
+
+  modeBox.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-mode]');
+    if (!btn || !modeBox.contains(btn)) return;
+    if (state.mode === btn.dataset.mode) return;
+    state.mode = btn.dataset.mode;
+    for (const b of modeBox.querySelectorAll('button[data-mode]')) {
+      b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+    }
+    updateStart();
+  });
+
+  shuffleBtn.addEventListener('click', () => {
+    state.shuffled = shuffleBtn.getAttribute('aria-pressed') !== 'true';
+    shuffleBtn.setAttribute('aria-pressed', state.shuffled ? 'true' : 'false');
+    updateStart();
+  });
+
+  closeBtn.addEventListener('click', () => clearSelection(true));
+
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && selected) clearSelection(true);
+  });
+
+  const syncCloseLabel = () => {
+    // 降级动效时按钮文案去掉快捷键提示（与 14 号页同一处理）
+    closeBtn.textContent = reduce.matches ? '放回去' : '放回去（Esc）';
+  };
+  syncCloseLabel();
+  if (typeof reduce.addEventListener === 'function') reduce.addEventListener('change', syncCloseLabel);
+  else if (typeof reduce.addListener === 'function') reduce.addListener(syncCloseLabel);
+}
+
+/* ======================================================================
+   6. 页眉计数与存储模式
+   ====================================================================== */
+function setBadge(linkId, countId, n) {
+  const link = document.getElementById(linkId);
+  const badge = document.getElementById(countId);
+  if (badge) badge.textContent = String(n);
+  if (link) link.classList.toggle('is-zero', n === 0);
+}
+
+function renderModeHint() {
+  const hint = document.getElementById('mode-hint');
+  const local = getStorageMode() === 'local';
+  hint.dataset.mode = local ? 'local' : 'server';
+  hint.textContent = '';
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  dot.setAttribute('aria-hidden', 'true');
+  hint.append(dot, document.createTextNode(local ? '本地模式（未连服务端）' : '已连服务端'));
+}
+
+async function syncHeader() {
+  try {
+    const st = await loadState();
+    setBadge('link-wrong', 'n-wrong', mistakeList(st).length);
+    setBadge('link-star', 'n-star', starList(st).length);
+  } catch (err) {
+    // api.js 内部已降级到本机存储；这里只兜一层，保证控制台干净
+  }
+  renderModeHint();
+}
+
+/* ======================================================================
+   7. 启动
+   ====================================================================== */
+cards = renderUnits();
+renderStatsInto(statsBox);
+renderStatsInto(colophonBox);
+bindEvents();
+apply();
+syncHeader();
+</script>
+</body>
+</html>

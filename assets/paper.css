@@ -1,0 +1,412 @@
+/* ==========================================================================
+   宣纸 · 设计系统
+   --------------------------------------------------------------------------
+   三个页面（index / units / study）共用。基调取自 07 号页「砚山」的柔和留白：
+   宣纸暖米底、细若发丝的分割线、克制的朱砂一点红、大留白、宋体主标题。
+   交互骨架取自 14 号页，但描边与阴影全部放轻，不做粗野主义。
+
+   离线策略：Google Fonts 只顾「锦上添花」—— 加载失败时回退到系统中文字体，
+   版式与对比度不塌。
+   ========================================================================== */
+
+/* ========================== 1. 变量 ========================== */
+
+:root {
+  /* —— 宣纸底色阶 —— */
+  --paper:        #F5F0E4;   /* 主宣纸色 */
+  --paper-deep:   #EDE6D6;   /* 稍深的宣纸，用于分区 */
+  --paper-raise:  #FBF8F1;   /* 抬起面（输入框、卡片内层） */
+  --paper-sink:   #E6DCC9;   /* 凹陷（进度槽、禁用面） */
+
+  /* —— 墨色阶 —— */
+  --ink:          #221E18;   /* 正文主墨 */
+  --ink-mid:      #4A4238;   /* 次级文字 */
+  --ink-soft:     #6E6455;   /* 说明文字（对宣纸底 ≈ 5.1:1，达标） */
+  --ink-faint:    #9A8F7D;   /* 装饰性文字，不承载正文信息 */
+
+  /* —— 朱砂与点缀 —— */
+  --cinnabar:     #A8331F;   /* 朱砂：强调、正确、主按钮 */
+  --cinnabar-lit: #C2482F;   /* 朱砂亮一档，hover */
+  --cinnabar-wash:#F0DCD4;   /* 朱砂淡底 */
+  --indigo:       #2F4A5C;   /* 靛青：次级强调、错误标记以外的地方 */
+  --indigo-wash:  #DDE5E8;   /* 靛青淡底 */
+  --gold:         #A9852F;   /* 赭金：星标、印章 */
+  --gold-wash:    #F2E7CC;   /* 赭金淡底 */
+  --wrong:        #8E2B2B;   /* 错的墨色（比朱砂更深，避免与正确色混淆） */
+  --wrong-wash:   #F2DFDC;
+
+  /* —— 细线 —— */
+  --line:         rgba(34, 30, 24, 0.14);  /* 常规分割线 */
+  --line-soft:    rgba(34, 30, 24, 0.07);  /* 极细装饰线 */
+  --line-strong:  rgba(34, 30, 24, 0.30);  /* 需要强调的框线 */
+
+  /* —— 字体 —— */
+  --serif-cn: "Noto Serif SC", "Source Han Serif SC", "Source Han Serif CN",
+              "Songti SC", "SimSun", "STSong", serif;
+  --sans-cn:  "Noto Sans SC", "Source Han Sans SC", "PingFang SC",
+              "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+  --mono-en:  "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono",
+              Menlo, monospace;
+
+  /* —— 尺度 —— */
+  --gut: clamp(18px, 4.4vw, 64px);      /* 版心左右留白 */
+  --maxw: 1180px;                        /* 版心最大宽度 */
+  --radius: 2px;                         /* 几乎不圆角 —— 纸是方的 */
+  --shadow-soft: 0 1px 2px rgba(34, 30, 24, .05), 0 8px 24px -14px rgba(34, 30, 24, .18);
+  --shadow-card: 0 1px 1px rgba(34, 30, 24, .04), 0 14px 34px -22px rgba(34, 30, 24, .28);
+  --ease: cubic-bezier(.2, .8, .25, 1);
+  --dur: .34s;
+}
+
+/* ========================== 2. 基础 ========================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans-cn);
+  font-size: clamp(15px, 1.02vw, 16.5px);
+  line-height: 1.75;
+  letter-spacing: .01em;
+  /* 宣纸氛围层：极淡的黄褐晕染 + 纤维噪点，压到几乎看不见但去掉就「塑料」 */
+  background-image:
+    radial-gradient(120% 80% at 12% -10%, rgba(169, 133, 47, .055), transparent 60%),
+    radial-gradient(100% 70% at 92% 4%, rgba(47, 74, 92, .04), transparent 62%),
+    radial-gradient(90% 60% at 50% 108%, rgba(168, 51, 31, .035), transparent 58%);
+  background-attachment: fixed;
+}
+
+/* 纤维噪点：内联 SVG feTurbulence，零外部请求 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .38;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23f)' opacity='.28'/%3E%3C/svg%3E");
+}
+
+/* 版心 */
+.wrap {
+  position: relative;
+  z-index: 1;
+  width: min(100% - (var(--gut) * 2), var(--maxw));
+  margin-inline: auto;
+}
+
+::selection { background: var(--cinnabar); color: var(--paper-raise); }
+
+/* ========================== 3. 排版 ========================== */
+
+h1, h2, h3, h4 {
+  font-family: var(--serif-cn);
+  font-weight: 600;
+  line-height: 1.24;
+  letter-spacing: .02em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+p { margin: 0 0 1em; }
+p:last-child { margin-bottom: 0; }
+
+a { color: var(--indigo); text-underline-offset: .22em; text-decoration-thickness: 1px; }
+a:hover { color: var(--cinnabar); }
+
+/* 小字标签：字距拉开，像书页边的眉批 */
+.label {
+  font-family: var(--sans-cn);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.kicker {
+  display: inline-block;
+  font-size: 11.5px;
+  letter-spacing: .24em;
+  color: var(--ink-mid);
+  border: 1px solid var(--line-strong);
+  padding: 5px 11px 4px;
+  background: rgba(251, 248, 241, .7);
+}
+
+/* 英文单词展示：等宽 + 紧字距 */
+.en, .mono { font-family: var(--mono-en); letter-spacing: -.01em; }
+
+/* 竖排小字 */
+.vert {
+  writing-mode: vertical-rl;
+  font-size: 11.5px;
+  letter-spacing: .42em;
+  color: var(--ink-soft);
+}
+
+/* ========================== 4. 细线分割 ========================== */
+
+.rule { border: 0; border-top: 1px solid var(--line); margin: 0; }
+.rule-soft { border: 0; border-top: 1px solid var(--line-soft); margin: 0; }
+
+/* 页眉式细线：一条实线 + 下面一条更淡的线，像宣纸上的界格 */
+.rule-double { border-top: 1px solid var(--line-strong); position: relative; }
+.rule-double::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 3px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* ========================== 5. 按钮 ========================== */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;                 /* 手机拇指热区 */
+  padding: 10px 18px;
+  font-family: var(--sans-cn);
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  color: var(--ink);
+  background: var(--paper-raise);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+              border-color var(--dur) var(--ease), transform .12s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:hover { background: var(--paper-deep); border-color: var(--ink-mid); }
+.btn:active { transform: translateY(1px); }
+
+.btn[aria-pressed="true"], .btn.is-on {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.btn-primary {
+  background: var(--cinnabar);
+  color: var(--paper-raise);
+  border-color: var(--cinnabar);
+}
+.btn-primary:hover { background: var(--cinnabar-lit); border-color: var(--cinnabar-lit); }
+
+.btn-ghost { background: transparent; border-color: var(--line); color: var(--ink-mid); }
+.btn-ghost:hover { background: var(--paper-raise); color: var(--ink); }
+
+.btn-sm { min-height: 44px; padding: 5px 12px; font-size: 13px; }
+
+/* 触区兜底：老浏览器不支持 pointer:coarse 时，窄屏一律按触摸设备对待 */
+@media (max-width: 700px) {
+  .btn-sm { min-height: 44px; }
+}
+
+.btn[disabled], .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+
+/* 焦点：全站统一的可见焦点环 */
+:focus-visible {
+  outline: 2px solid var(--cinnabar);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+/* ========================== 6. 表单 ========================== */
+
+.field {
+  width: 100%;
+  min-height: 52px;
+  padding: 13px 16px;
+  font-family: var(--sans-cn);
+  font-size: 17px;                  /* iOS 上 < 16px 会触发缩放 */
+  color: var(--ink);
+  background: var(--paper-raise);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+/* 占位符也用 --ink-soft：--ink-faint（3.00:1）虽然占位符不强制达标，
+   但提升到 5.47:1 没有任何视觉代价，还能避免以后新页面直接踩坑。 */
+.field::placeholder { color: var(--ink-soft); }
+.field:focus {
+  outline: none;
+  border-color: var(--cinnabar);
+  box-shadow: 0 0 0 3px var(--cinnabar-wash);
+}
+.field-en {
+  font-family: var(--mono-en);
+  font-size: 21px;
+  letter-spacing: .04em;
+  text-align: center;
+}
+textarea.field { resize: vertical; min-height: 60px; line-height: 1.6; }
+
+/* 选中态：朱砂填色（词性按钮平铺用） */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;                 /* 手机拇指热区，与 .btn 一致 */
+  min-width: 62px;
+  padding: 8px 14px;
+  font-family: var(--mono-en);
+  font-size: 15px;
+  letter-spacing: .02em;
+  color: var(--ink);
+  background: var(--paper-raise);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+              border-color var(--dur) var(--ease), transform .12s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.chip:hover { background: var(--paper-deep); }
+.chip[aria-pressed="true"] {
+  background: var(--cinnabar);
+  border-color: var(--cinnabar);
+  color: var(--paper-raise);
+}
+.chip:active { transform: translateY(1px); }
+
+/* ========================== 7. 卡片 ========================== */
+
+.card {
+  position: relative;
+  background: var(--paper-raise);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+/* 纸边的压痕：卡片底部一条更深的细线 */
+.card::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  border-bottom: 1px solid var(--line-soft);
+  pointer-events: none;
+}
+
+/* ========================== 8. 反馈态 ========================== */
+
+.is-right {
+  color: var(--cinnabar);
+  border-color: var(--cinnabar) !important;
+}
+.is-wrong {
+  color: var(--wrong);
+  border-color: var(--wrong) !important;
+}
+
+.flash-right { animation: flashRight .6s var(--ease); }
+.flash-wrong { animation: flashWrong .5s var(--ease); }
+
+@keyframes flashRight {
+  0%   { background: var(--cinnabar-wash); }
+  100% { background: transparent; }
+}
+@keyframes flashWrong {
+  0%, 40% { background: var(--wrong-wash); }
+  100%    { background: transparent; }
+}
+
+/* 印章式圆标（正确 / 错误） */
+.seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px; height: 46px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  font-family: var(--serif-cn);
+  font-size: 22px;
+  font-weight: 700;
+  transform: rotate(-6deg);
+}
+
+/* ========================== 9. 入场动画 ========================== */
+
+.rise {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: rise .72s var(--ease) forwards;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes rise {
+  to { opacity: 1; transform: none; }
+}
+
+/* ========================== 10. 无障碍与降级 ========================== */
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+[hidden] { display: none !important; }
+
+/* 键盘跳转链接 */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 99;
+  padding: 10px 16px;
+  background: var(--ink);
+  color: var(--paper);
+  text-decoration: none;
+}
+.skip:focus { left: 8px; top: 8px; }
+
+/* 数字用等宽，表格对齐 */
+.tnum { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+  .rise { opacity: 1; transform: none; }
+  html { scroll-behavior: auto; }
+}
+
+/* 高对比度模式 */
+@media (prefers-contrast: more) {
+  :root {
+    --line: rgba(34, 30, 24, .34);
+    --line-strong: rgba(34, 30, 24, .62);
+    --ink-soft: #4A4238;
+  }
+}
+
+/* ========================== 11. 窄屏 ========================== */
+
+@media (max-width: 480px) {
+  :root { --gut: 16px; }
+  body { font-size: 15px; }
+}
+
+/* 打印：去掉氛围层，方便把错题本打出来 */
+@media print {
+  body { background: #fff; }
+  body::before { display: none; }
+  .btn, .no-print { display: none !important; }
+}

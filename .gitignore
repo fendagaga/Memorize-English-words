@@ -1,0 +1,22 @@
+# ── 运行时状态 ───────────────────────────────────────────────
+# 每个浏览器一份的错题本 / 星标 / 进度（打开页面时自动生成）。
+# 交付时不入库；删掉对应 json 即可重置该浏览器的进度。
+userData/*.json
+!userData/.gitkeep
+
+# ── 验收截图 ────────────────────────────────────────────────
+# 这些 PNG 由审计脚本重新跑一遍即可再生成，不入库；
+# 同目录下的报告与审计结果（report.md / a11y.json / contrast.json /
+# e2e-result.json / e2e-wrongbook-export.md）保留，作为验收证据。
+.qa/e2e-*.png
+.qa/final-*.png
+.qa/v-*.png
+.qa/units-detail-verify.png
+
+# ── 系统与编辑器 ─────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.vscode/
+.idea/

@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="初中英语单词记背：三册词表拆成卡片，先看中文想英文，或者先看单词挑词性；答错自动进错题本，答对自动销号。">
+<title>知新 · 初中英语单词记背</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23A8331F'/%3E%3Crect x='6' y='6' width='20' height='20' fill='none' stroke='%23F5F0E4' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&amp;family=Noto+Sans+SC:wght@300;400;500;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/paper.css">
+<style>
+/* ==========================================================================
+   首页 · 知新
+   标题手法取自 pages/02-neon-poster.html（错落叠压的字块、描边空心字、细框
+   kicker、竖排小字、贴纸块、印章），调性取自 shots/07-fine-cuisine.png
+   （暖米底、大留白、发丝细线、宋体、克制的朱砂一点红）。
+   布局用 CSS Grid 而不是 02 号页的绝对定位，保证窄屏不依赖碰撞计算。
+   ========================================================================== */
+
+/* ========================== 1. 页眉 ========================== */
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--line);
+  background: rgba(245, 240, 228, .9);   /* --paper 的 90% 不透明版 */
+  backdrop-filter: blur(6px);
+}
+.bar-in {
+  display: flex;
+  align-items: center;
+  gap: 12px 18px;
+  flex-wrap: wrap;
+  padding-block: 10px;
+}
+.mark { display: flex; align-items: baseline; gap: 10px; margin: 0; }
+.mark-cn { font-family: var(--serif-cn); font-size: 21px; font-weight: 700; letter-spacing: .16em; }
+.mark-en { font-size: 10.5px; letter-spacing: .3em; color: var(--ink-soft); }
+.mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 0 auto;
+  font-size: 12px;
+  letter-spacing: .08em;
+  color: var(--ink-soft);
+}
+.mode .dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition: background var(--dur) var(--ease);
+}
+.mode[data-mode="server"] .dot { background: var(--indigo); }
+.mode[data-mode="local"] .dot { background: var(--gold); }
+.mode[data-mode="warn"] .dot { background: var(--wrong); }
+.mode[data-mode="warn"] { color: var(--wrong); }
+
+/* ========================== 2. 标题舞台 ========================== */
+
+.stage {
+  position: relative;
+  overflow: clip;                 /* 巨型字块与旋转只允许溢出到舞台内 */
+  padding: clamp(20px, 3.4vw, 46px) 0 clamp(10px, 1.8vw, 20px);
+  --px: 0px;
+  --py: 0px;
+}
+/* 宣纸纤维：内联 feTurbulence，横向拉长的噪点，随指针轻微位移 */
+.stage-fiber {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  transform: translate3d(var(--px), var(--py), 0) scale(1.04);
+  will-change: transform;
+}
+.stage-fiber svg { display: block; width: 100%; height: 100%; opacity: .16; }
+/* 淡墨晕染 */
+.stage-wash {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(44% 38% at 78% 14%, rgba(169, 133, 47, .10), transparent 62%),
+    radial-gradient(50% 44% at 10% 80%, rgba(47, 74, 92, .075), transparent 64%),
+    radial-gradient(36% 32% at 62% 96%, rgba(168, 51, 31, .055), transparent 60%);
+}
+/* 界格：六道极淡的竖线 */
+.stage-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .55;
+  background-image: linear-gradient(to right, var(--line-soft) 1px, transparent 1px);
+  background-size: calc(100% / 6) 100%;
+}
+
+.stage-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1.28fr) minmax(220px, .72fr);
+  grid-template-areas:
+    "kicker  vert"
+    "title   vert"
+    "tagline actions"
+    "slab    seal"
+    "hint    hint";
+  align-content: space-between;
+  gap: clamp(14px, 2.2vw, 30px) clamp(20px, 3.4vw, 56px);
+  min-height: min(84vh, 780px);
+}
+
+.p-kicker { grid-area: kicker; margin: 0; justify-self: start; }
+.p-title { grid-area: title; margin: 0; align-self: start; }
+.p-tagline { grid-area: tagline; margin: 0; max-width: 48ch; color: var(--ink-mid); }
+.p-actions { grid-area: actions; align-self: center; }
+.p-slab { grid-area: slab; align-self: end; justify-self: start; max-width: min(100%, 430px); }
+.p-vert { grid-area: vert; align-self: start; justify-self: end; }
+.p-seal { grid-area: seal; align-self: end; justify-self: end; }
+.p-hint { grid-area: hint; margin: 0; }
+
+/* 旋转与位移一律放在内层，避免和 .rise 的 transform 打架 */
+.tilt {
+  display: inline-block;
+  transform-origin: left center;
+  transform: translate(var(--dx, 0px), var(--dy, 0px)) rotate(var(--rot, 0deg)) scale(var(--k, 1));
+  transition: transform .52s cubic-bezier(.2, 1.5, .35, 1);
+  will-change: transform;
+}
+
+/* ---------- 巨型标题：实心朱砂 + 描边空心，错落叠压 ---------- */
+
+.t-block { display: block; line-height: .86; }
+.t-static {
+  font-family: var(--serif-cn);
+  font-size: clamp(3.2rem, 15.4vw, 13.6rem);
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--tone-solid, var(--cinnabar));
+  text-shadow: 3px 3px 0 var(--tone-shadow, rgba(168, 51, 31, .16)),
+               0 14px 30px rgba(34, 30, 24, .07);
+}
+.t-bloom {
+  margin: -.28em 0 0 .4em;
+  font-family: var(--serif-cn);
+  font-size: clamp(3.6rem, 18.6vw, 16.6rem);
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: transparent;
+  -webkit-text-stroke-color: var(--tone-hollow, var(--ink-mid));
+  -webkit-text-stroke-width: clamp(1.8px, .013em, 3.4px);
+}
+.blk-btn {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  -webkit-text-stroke: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.blk-btn:hover { opacity: .88; }
+.blk-btn:active { opacity: 1; }
+
+/* ---------- 竖排小字（含 07 号页的引线与小号数） ---------- */
+
+.vert-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-left: 13px;
+  border-left: 1px solid var(--line-soft);
+}
+/* 「01」是页码，算信息文字，同样不能用只当装饰的 --ink-faint */
+.vert-no { font-size: 12px; letter-spacing: .2em; color: var(--ink-soft); }
+
+/* ---------- 左下贴纸块：实时统计 ---------- */
+
+.slab {
+  position: relative;
+  padding: clamp(12px, 1.6vw, 18px) clamp(14px, 1.8vw, 20px);
+  background: var(--paper-raise);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-soft);
+}
+/* 骑缝角上的朱砂小方块 */
+.slab::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  width: 9px;
+  height: 9px;
+  background: var(--cinnabar);
+}
+.slab-cap { margin: 0 0 6px; display: block; }
+.slab-nums {
+  margin: 0;
+  font-family: var(--serif-cn);
+  font-size: clamp(16px, 1.6vw, 20px);
+  line-height: 1.6;
+  color: var(--ink);
+}
+.slab-nums b { font-weight: 700; color: var(--cinnabar); }
+.slab-note { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-soft); }
+.slab-note b { font-weight: 600; color: var(--ink-mid); }
+
+/* ---------- 右下印章 ---------- */
+
+.seal-tilt { display: block; transform-origin: center; }
+.seal-svg { display: block; width: clamp(76px, 7.6vw, 104px); height: auto; margin-inline: auto; }
+.seal-face { fill: var(--cinnabar); }
+.seal-line { fill: none; stroke: var(--paper-raise); stroke-width: 2.4; opacity: .92; }
+.seal-strokes path { fill: none; stroke: var(--paper-raise); stroke-width: 5.2; stroke-linecap: square; }
+.seal-cap {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--serif-cn);
+  font-size: 12px;
+  letter-spacing: .42em;
+  text-indent: .42em;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/* ---------- 导航入口 ---------- */
+
+.p-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.p-actions .btn {
+  width: 100%;
+  gap: 6px;
+  padding-inline: 12px;
+  font-size: 14px;
+  letter-spacing: .04em;
+}
+.a-full { grid-column: 1 / -1; }
+.btn-resume {
+  border-color: var(--cinnabar);
+  background: var(--cinnabar-wash);
+  color: var(--cinnabar);
+}
+.btn-resume:hover { background: var(--paper-deep); border-color: var(--cinnabar-lit); color: var(--cinnabar-lit); }
+.resume-unit { font-size: 12.5px; opacity: .85; }
+.resume-tail { font-size: 12.5px; opacity: .75; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  font-family: var(--mono-en);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink-mid);
+  background: var(--paper-deep);
+  border: 1px solid var(--line-strong);
+}
+.badge:empty { display: none; }
+.badge.is-zero { opacity: .5; }
+
+.p-hint {
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11.5px;
+  letter-spacing: .14em;
+  color: var(--ink-soft);
+}
+
+/* ========================== 3. 词库构成 ========================== */
+
+.sect { padding: clamp(34px, 5vw, 76px) 0 clamp(24px, 3.4vw, 50px); }
+.sect-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+  padding-top: 15px;
+  margin-bottom: clamp(18px, 2.6vw, 34px);
+}
+.sect-head h2 { font-size: clamp(1.5rem, 3.2vw, 2.3rem); }
+.sect-head .label { margin: 0; }
+.vol-total { margin: 0 0 clamp(14px, 2vw, 22px); color: var(--ink-mid); font-size: 14.5px; }
+.vol-total b { color: var(--cinnabar); font-weight: 600; }
+.vol-list { list-style: none; margin: 0 0 clamp(14px, 2vw, 22px); padding: 0; }
+.vol-row {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 4px 18px;
+  align-items: baseline;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.vol-row:first-child { border-top: 1px solid var(--line-soft); }
+.vol-name { margin: 0; font-family: var(--serif-cn); font-size: 18.5px; font-weight: 600; }
+.vol-stat { margin: 0; font-size: 14px; color: var(--ink-mid); }
+/* 册次源文件名是真实信息，不能用只当装饰的 --ink-faint（2.80:1） */
+.vol-src { margin: 0; font-size: 12.5px; color: var(--ink-soft); text-align: right; }
+.sect-note { margin: 0; max-width: 62ch; font-size: 13.5px; color: var(--ink-soft); }
+.sect-note code,
+.foot code {
+  font-family: var(--mono-en);
+  font-size: .92em;
+  padding: 1px 5px;
+  background: var(--paper-deep);
+  border: 1px solid var(--line-soft);
+}
+
+/* ========================== 4. 页脚 ========================== */
+
+.foot { padding: clamp(28px, 4vw, 58px) 0 clamp(16px, 2vw, 26px); }
+.foot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: clamp(18px, 2.6vw, 40px);
+  padding-top: 18px;
+}
+.foot-col h2 { margin: 0 0 8px; font-size: 11.5px; letter-spacing: .3em; color: var(--ink-soft); font-weight: 500; }
+.foot-col p { margin: 0; font-size: 13.5px; color: var(--ink-mid); }
+.foot-col b { color: var(--cinnabar); font-weight: 600; }
+.legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  justify-content: space-between;
+  margin: clamp(22px, 3vw, 40px) 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11.5px;
+  letter-spacing: .1em;
+  color: var(--ink-soft);
+}
+.noscript { margin: 14px auto 0; font-size: 13.5px; color: var(--wrong); }
+
+/* ========================== 5. 窄屏：整版改单列 ========================== */
+
+@media (max-width: 960px) {
+  .stage { padding-top: clamp(18px, 5vw, 30px); }
+  .stage-stack {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "kicker"
+      "title"
+      "tagline"
+      "actions"
+      "slab"
+      "vert"
+      "seal"
+      "hint";
+    align-content: start;
+    gap: clamp(18px, 5vw, 28px);
+    min-height: 0;
+  }
+  .p-actions { align-self: start; }
+  .p-slab, .p-seal, .p-vert { justify-self: start; align-self: start; max-width: 100%; }
+  .p-tagline { max-width: none; }
+  .t-static { font-size: clamp(3.4rem, 23vw, 9rem); }
+  .t-bloom { font-size: clamp(3.8rem, 27vw, 10rem); }
+  .vert-wrap {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line-soft);
+  }
+  .vert-wrap .vert { writing-mode: horizontal-tb; letter-spacing: .3em; }
+  .seal-tilt { text-align: left; }
+  .seal-svg { margin-inline: 0; }
+  .seal-cap { text-align: left; }
+}
+
+@media (max-width: 720px) {
+  .vol-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .vol-src { text-align: left; }
+  .mark-en { display: none; }
+}
+
+@media (max-width: 420px) {
+  .p-actions { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tilt { transition: none; }
+  .stage-fiber { transform: none; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="bar">
+  <div class="wrap bar-in">
+    <p class="mark">
+      <span class="mark-cn">知新</span>
+      <span class="mark-en">初中英语词表</span>
+    </p>
+    <p class="mode" id="modeLine">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="modeText" aria-live="polite">正在连接服务端……</span>
+    </p>
+  </div>
+</header>
+
+<noscript>
+  <p class="wrap noscript">实时数字、错题本入口与标题排布都需要 JavaScript；词库本身已经内联在 assets/vocab.js 里。</p>
+</noscript>
+
+<main id="main">
+  <section class="stage" id="hero" aria-labelledby="heroTitle">
+    <div class="stage-wash" aria-hidden="true"></div>
+    <div class="stage-grid" aria-hidden="true"></div>
+    <div class="stage-fiber" id="fiberLayer" aria-hidden="true">
+      <svg viewBox="0 0 1200 800" preserveAspectRatio="none" focusable="false" aria-hidden="true">
+        <filter id="paperFiber" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.9" numOctaves="3" seed="9" stitchTiles="stitch"></feTurbulence>
+          <feColorMatrix type="saturate" values="0"></feColorMatrix>
+        </filter>
+        <rect width="1200" height="800" filter="url(#paperFiber)"></rect>
+      </svg>
+    </div>
+
+    <div class="wrap">
+      <div class="stage-stack">
+
+        <p class="p-kicker rise" style="--delay:.06s">
+          <span class="kicker tilt" style="--rot:-1.2deg">宣纸 · 初中英语词表</span>
+        </p>
+
+        <h1 class="p-title" id="heroTitle" aria-label="背词知新，初中英语单词记背">
+          <span class="t-block t-static rise" style="--delay:.16s">
+            <button class="blk-btn" type="button" data-shuffle aria-label="重新排布标题「背词」两个字">
+              <span class="tilt" style="--rot:-2.1deg">背词</span>
+            </button>
+          </span>
+          <span class="t-block t-bloom rise" style="--delay:.3s">
+            <button class="blk-btn" type="button" data-shuffle aria-label="重新排布标题「知新」两个字">
+              <span class="tilt" style="--rot:1.6deg">知新</span>
+            </button>
+          </span>
+        </h1>
+
+        <p class="p-tagline rise" style="--delay:.44s">
+          词表已经拆成卡片：先看中文想英文，或者先看单词挑词性。答错的词自动进错题本，答对自动销号；
+          一词多义按义项分开出卡，不会把两种意思混在一张卡上。
+        </p>
+
+        <nav class="p-actions rise" style="--delay:.56s" aria-label="开始背记">
+          <a class="btn btn-primary a-full" href="units.html">进入单元索引</a>
+          <a class="btn btn-resume a-full" id="resumeBtn" href="units.html" hidden>
+            继续上次
+            <span class="en resume-unit" id="resumeUnit"></span>
+            <span class="resume-tail" id="resumeTail"></span>
+          </a>
+          <a class="btn" href="study.html?unit=wrong">错题本 <span class="badge tnum" data-count="wrong"></span></a>
+          <a class="btn" href="study.html?unit=star">星标生词本 <span class="badge tnum" data-count="star"></span></a>
+        </nav>
+
+        <div class="p-slab slab rise" style="--delay:.68s">
+          <div class="tilt" style="--rot:2.2deg">
+            <span class="label slab-cap">词库规模</span>
+            <p class="slab-nums" aria-live="polite">
+              <b class="tnum" data-num="units">—</b> 个单元 ·
+              <b class="tnum" data-num="entries">—</b> 词条 ·
+              <b class="tnum" data-num="cards">—</b> 个义项
+            </p>
+            <p class="slab-note">其中 <b class="tnum" data-num="multiSense">—</b> 个词条一词多义，按义项分开出卡。</p>
+          </div>
+        </div>
+
+        <div class="p-vert vert-wrap rise" style="--delay:.8s" aria-hidden="true">
+          <span class="vert">温故而知新 · 一日不辍</span>
+          <span class="vert-no tnum">01</span>
+        </div>
+
+        <div class="p-seal rise" style="--delay:.92s" aria-hidden="true">
+          <div class="tilt seal-tilt" style="--rot:-3.2deg">
+            <svg class="seal-svg" viewBox="0 0 128 128" focusable="false" aria-hidden="true">
+              <defs>
+                <filter id="sealInk" x="-10%" y="-10%" width="120%" height="120%">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" result="grain"></feTurbulence>
+                  <feDisplacementMap in="SourceGraphic" in2="grain" scale="1.8" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+                </filter>
+              </defs>
+              <g filter="url(#sealInk)">
+                <rect class="seal-face" x="4" y="4" width="120" height="120"></rect>
+                <rect class="seal-line" x="15" y="15" width="98" height="98"></rect>
+                <g class="seal-strokes">
+                  <path d="M26 30 H54 M26 42 H54 M33 30 V56 M47 42 V56"></path>
+                  <path d="M88 24 V56 M74 33 H102 M74 47 H102"></path>
+                  <path d="M26 72 H54 M40 72 V104 M26 88 H54"></path>
+                  <path d="M74 72 V104 M74 84 H102 M102 84 V104 M74 98 H102"></path>
+                </g>
+              </g>
+            </svg>
+            <span class="seal-cap">知新</span>
+          </div>
+        </div>
+
+        <p class="p-hint rise" id="hint" style="--delay:1.04s" aria-live="polite">
+          点标题字块可重新排布配色与角度 · Tab 键可依次访问每个入口
+        </p>
+
+      </div>
+    </div>
+  </section>
+
+  <section class="sect" aria-labelledby="volTitle">
+    <div class="wrap">
+      <div class="sect-head rule-double">
+        <h2 id="volTitle">词库构成</h2>
+        <p class="label">按册次拆开</p>
+      </div>
+      <p class="vol-total" id="volTotal" aria-live="polite"></p>
+      <ul class="vol-list" id="volList"></ul>
+      <p class="sect-note">
+        每一条词条都由 <code>词语raw</code> 里的 Markdown 词表编译而来，专有名词与缩写会在构建时剔除。
+        要加册，把新文件丢进那个目录，跑一次 <code>node scripts/build.mjs</code>，刷新页面就能看到新单元。
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid rule-double">
+      <div class="foot-col">
+        <h2>词库</h2>
+        <p>
+          覆盖 <b class="tnum" data-num="volumes">—</b> 册（<span id="volNames">正在读取……</span>），
+          共 <b class="tnum" data-num="units">—</b> 个单元、<b class="tnum" data-num="entries">—</b> 个词条、
+          <b class="tnum" data-num="cards">—</b> 个义项。
+        </p>
+      </div>
+      <div class="foot-col">
+        <h2>加册方法</h2>
+        <p>把新的 Markdown 词表放进 <code>词语raw</code>，在 <code>word</code> 目录跑一次 <code>node scripts/build.mjs</code>，刷新页面即可。</p>
+      </div>
+      <div class="foot-col">
+        <h2>存储模式</h2>
+        <p id="footMode">正在读取状态……</p>
+      </div>
+    </div>
+    <p class="legal">
+      <span>知新 · 初中英语单词记背</span>
+      <span class="tnum" id="buildStamp">正在读取词库版本……</span>
+    </p>
+  </div>
+</footer>
+
+<script type="module">
+import { VOCAB, overview, unitById, mergeSettings } from './assets/vocab.js';
+import {
+  loadState, getStorageMode, mistakeList, starList, lastStudied, checkHealth,
+} from './assets/api.js';
+
+const ov = overview();
+const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+/* ========================== 1. 数字：一律来自 overview() ========================== */
+
+function fillNumbers() {
+  for (const el of $$('[data-num]')) {
+    const value = ov[el.dataset.num];
+    if (typeof value === 'number') el.textContent = String(value);
+  }
+}
+
+function renderVolumes() {
+  const list = $('#volList');
+  const total = $('#volTotal');
+  if (total) {
+    total.textContent = `共 ${ov.volumes} 册 · ${ov.units} 个单元 · ${ov.entries} 个词条 · ${ov.cards} 个义项；`
+      + `其中 ${ov.multiSense} 个词条一词多义，已经按义项拆开。`;
+  }
+  // 册名也从词库取，加册后页脚不会自相矛盾
+  const names = $('#volNames');
+  if (names) names.textContent = VOCAB.volumes.map((v) => v.label).join('、');
+  if (!list) return;
+  const frag = document.createDocumentFragment();
+  for (const v of VOCAB.volumes) {
+    const row = document.createElement('li');
+    row.className = 'vol-row';
+
+    const name = document.createElement('p');
+    name.className = 'vol-name';
+    name.textContent = v.label;
+
+    const stat = document.createElement('p');
+    stat.className = 'vol-stat tnum';
+    stat.textContent = `${v.units} 个单元 · ${v.entries} 个词条 · ${v.cards} 个义项`;
+
+    const src = document.createElement('p');
+    src.className = 'vol-src en';
+    src.textContent = v.source;
+
+    row.append(name, stat, src);
+    frag.append(row);
+  }
+  list.append(frag);
+}
+
+/* ========================== 2. 服务端状态与错题本入口 ========================== */
+
+function setMode(kind, text) {
+  const line = $('#modeLine');
+  const label = $('#modeText');
+  if (line) line.dataset.mode = kind;
+  if (label) label.textContent = text;
+}
+
+function setBadge(key, n) {
+  for (const el of $$(`[data-count="${key}"]`)) {
+    el.textContent = String(n);
+    el.classList.toggle('is-zero', n === 0);
+  }
+}
+
+/** 错题本 / 星标生词本的进度 key 不是单元 id，界面上要显示人话。 */
+const RESUME_LABEL = { wrong: '错题本', star: '星标生词本' };
+
+function showResume(last, settings) {
+  const btn = $('#resumeBtn');
+  const unitEl = $('#resumeUnit');
+  const tailEl = $('#resumeTail');
+  if (!btn || !unitEl || !tailEl || !last || !last.unitId) return;
+
+  const key = String(last.unitId);
+  const mode = last.mode === 'pos' ? 'pos' : 'en';
+  const sense = settings && settings.senseSplit === false ? 'merge' : 'split';
+  // 单元：回到该单元上次的位置；错题本 / 星标：回到重练现场（practice=1），而不是打开列表
+  const query = RESUME_LABEL[key]
+    ? { unit: key, practice: '1', mode, sense }
+    : { unit: key, mode, shuffle: '0', sense };
+  btn.href = `study.html?${new URLSearchParams(query).toString()}`;
+
+  const unit = unitById(key);
+  unitEl.textContent = unit ? unit.name : (RESUME_LABEL[key] || '上次背到的地方');
+  unitEl.classList.toggle('en', Boolean(unit));
+  tailEl.textContent = Number.isFinite(last.total) && last.total > 0 ? ` · ${last.total} 张卡` : '';
+  btn.hidden = false;
+}
+
+async function loadEverything() {
+  let health = { ok: false };
+  try { health = await checkHealth(); } catch { /* checkHealth 内部已兜底 */ }
+
+  let state = null;
+  try { state = await loadState(); } catch { state = null; }
+  const storage = getStorageMode();
+
+  if (storage === 'server') setMode('server', '服务端同步');
+  else setMode('local', '本地模式（未连服务端）');
+
+  if (state) {
+    setBadge('wrong', mistakeList(state).length);
+    setBadge('star', starList(state).length);
+    showResume(lastStudied(state), mergeSettings(state.settings));
+  }
+
+  if (health && health.ok === true && typeof health.units === 'number' && health.units !== ov.units) {
+    setMode('warn', `服务端词库为 ${health.units} 个单元，与页面不一致，建议重新构建`);
+  }
+
+  const foot = $('#footMode');
+  if (foot) {
+    foot.textContent = storage === 'server'
+      ? '错题本、星标与背诵进度存在服务端（按浏览器 uid 分文件），换一台设备也能接着背。'
+      : '没有连上服务端，错题本、星标与进度暂存在本机浏览器里，功能照常可用。';
+  }
+
+  const stamp = $('#buildStamp');
+  if (stamp) {
+    stamp.textContent = health && health.ok === true && health.builtAt
+      ? `词库构建于 ${String(health.builtAt).slice(0, 10)}`
+      : '词库来自本地内联数据';
+  }
+}
+
+/* ========================== 3. 点字块重新排布 ========================== */
+
+const TONES = [
+  { solid: 'var(--cinnabar)', hollow: 'var(--ink-mid)', shadow: 'rgba(168, 51, 31, .16)' },
+  { solid: 'var(--indigo)', hollow: 'var(--cinnabar)', shadow: 'rgba(47, 74, 92, .16)' },
+  { solid: 'var(--gold)', hollow: 'var(--indigo)', shadow: 'rgba(169, 133, 47, .18)' },
+  { solid: 'var(--ink)', hollow: 'var(--cinnabar)', shadow: 'rgba(34, 30, 24, .14)' },
+];
+let toneIndex = 0;
+
+function bindShuffle() {
+  const title = $('#heroTitle');
+  const hint = $('#hint');
+  const buttons = $$('[data-shuffle]');
+  if (!title || !buttons.length) return;
+
+  for (const btn of buttons) {
+    btn.addEventListener('click', () => {
+      toneIndex = (toneIndex + 1) % TONES.length;
+      const tone = TONES[toneIndex];
+      title.style.setProperty('--tone-solid', tone.solid);
+      title.style.setProperty('--tone-hollow', tone.hollow);
+      title.style.setProperty('--tone-shadow', tone.shadow);
+
+      for (const block of $$('.t-block', title)) {
+        const tilt = block.querySelector('.tilt');
+        if (!tilt) continue;
+        tilt.style.setProperty('--rot', (Math.random() * 7 - 3.5).toFixed(2) + 'deg');
+        tilt.style.setProperty('--dx', (Math.random() * 18 - 9).toFixed(1) + 'px');
+        tilt.style.setProperty('--dy', (Math.random() * 14 - 7).toFixed(1) + 'px');
+        tilt.style.setProperty('--k', (0.95 + Math.random() * 0.1).toFixed(3));
+      }
+
+      if (hint) hint.textContent = `字块已重新排布 · 第 ${toneIndex + 1} 种配色 · 再点一次换一版`;
+    });
+  }
+}
+
+/* ========================== 4. 纤维层随指针轻移（装饰） ========================== */
+
+function bindParallax() {
+  const stage = $('#hero');
+  const layer = $('#fiberLayer');
+  if (!stage || !layer || motion.matches) return;
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+
+  let targetX = 0, targetY = 0, curX = 0, curY = 0, raf = 0;
+  const step = () => {
+    curX += (targetX - curX) * 0.08;
+    curY += (targetY - curY) * 0.08;
+    stage.style.setProperty('--px', curX.toFixed(2) + 'px');
+    stage.style.setProperty('--py', curY.toFixed(2) + 'px');
+    raf = (Math.abs(targetX - curX) > 0.1 || Math.abs(targetY - curY) > 0.1)
+      ? window.requestAnimationFrame(step)
+      : 0;
+  };
+  const kick = () => { if (!raf) raf = window.requestAnimationFrame(step); };
+
+  window.addEventListener('pointermove', (e) => {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
+    const box = stage.getBoundingClientRect();
+    targetX = ((e.clientX - box.left) / Math.max(1, box.width) - 0.5) * -20;
+    targetY = ((e.clientY - box.top) / Math.max(1, box.height) - 0.5) * -16;
+    kick();
+  }, { passive: true });
+  window.addEventListener('blur', () => { targetX = 0; targetY = 0; kick(); });
+}
+
+/* ========================== 启动 ========================== */
+
+async function init() {
+  try {
+    fillNumbers();
+    renderVolumes();
+    bindShuffle();
+    bindParallax();
+    await loadEverything();
+  } catch (err) {
+    setMode('warn', '页面初始化出错，数字仍来自本地词库');
+    if (window.console && console.warn) console.warn('[知新首页] 初始化异常：', err);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
