@@ -14,7 +14,7 @@
 ```powershell
 cd D:\agent\happy\word
 
-node scripts/build.mjs        # 1. 编译词库（把「词语raw」解析成 data/vocab.json）
+node scripts/build.mjs        # 1. 编译词库（把项目内「词语raw」解析成 data/vocab.json）
 node scripts/serve.mjs        # 2. 起服务器
 ```
 
@@ -77,7 +77,8 @@ URL 参数：`unit`（单元 id，或 `wrong` / `star`）、`mode`（`en` / `pos
 
 ## 词库
 
-原始词表是只读输入，放在 **`D:\agent\happy\词语raw\`**：
+原始词表是**项目内的只读输入**，放在 **`词语raw/`**（项目根下，随项目一起分发，
+构建不再引用任何项目外路径）：
 
 ```
 七年级上册.md   10 单元
@@ -97,7 +98,7 @@ URL 参数：`unit`（单元 id，或 `wrong` / `star`）、`mode`（`en` / `pos
 
 ### 加一册（例如九年级上册）
 
-1. 把 `九年级上册.md` 按同样格式放进 `D:\agent\happy\词语raw\`
+1. 把 `九年级上册.md` 按同样格式放进项目根的 `词语raw\`
 2. 打开 `scripts/build.mjs`，确认 `VOLUMES` 里有对应配置行（已经预留了 8b / 9a / 9b）
 3. 重跑 `node scripts/build.mjs`
 4. **重启服务器**（`Ctrl+C` 后重新 `node scripts/serve.mjs`）—— 服务器只在启动时读一次词库
@@ -194,6 +195,10 @@ word/
 │   ├── paper.css           宣纸设计系统
 │   ├── api.js              状态访问 + 离线降级
 │   └── vocab.js            判分规则 + 卡片工具（纯函数）
+├── 词语raw/                原始词表（只读输入，构建的唯一数据来源）
+│   ├── 七年级上册.md
+│   ├── 七年级下册.md
+│   └── 八年级上册.md
 ├── scripts/
 │   ├── parse-vocab.mjs     词条解析器
 │   ├── build.mjs           词库编译

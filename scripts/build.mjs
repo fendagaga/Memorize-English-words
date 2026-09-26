@@ -1,5 +1,5 @@
 /**
- * 构建脚本 —— 把 D:\agent\happy\词语raw 里的册次文件编译成词库。
+ * 构建脚本 —— 把项目内「词语raw」里的册次文件编译成词库。
  *
  *   node scripts/build.mjs            # 正常构建
  *   node scripts/build.mjs --verbose  # 额外打印每单元统计
@@ -8,7 +8,7 @@
  *   data/vocab.json  服务端 API 与测试用
  *   data/vocab.js    `export const VOCAB = {...}`，浏览器端离线降级用
  *
- * 加册方法：把 `九年级上册.md` 之类的文件按同样格式丢进「词语raw」，
+ * 加册方法：把 `九年级上册.md` 之类的文件按同样格式丢进项目根的「词语raw」，
  * 在下面 VOLUMES 里补一行配置，重跑本脚本即可。页面无需改动。
  */
 
@@ -19,10 +19,11 @@ import { fileURLToPath } from 'node:url';
 import { buildVocab } from './parse-vocab.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+/** 项目根目录 —— 本脚本与项目同处一个仓库，不依赖任何项目外路径。 */
 const WORD_DIR = resolve(__dirname, '..');
 const OUT_DIR = join(WORD_DIR, 'data');
-/** 唯一允许读取的项目外路径：只读的原始词表目录。 */
-const RAW_DIR = resolve(WORD_DIR, '..', '词语raw');
+/** 原始词表目录：项目根下的「词语raw」，只读输入，随项目一起分发。 */
+const RAW_DIR = join(WORD_DIR, '词语raw');
 
 /** 册次配置 —— 按显示顺序排列；文件不存在自动跳过并在报告里标 missing。 */
 const VOLUMES = [

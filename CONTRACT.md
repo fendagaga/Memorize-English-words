@@ -8,7 +8,7 @@
 ## 0. 项目一句话
 
 初中英语单词记背系统。三个页面 + Node 零依赖服务器，全部在 `D:\agent\happy\word\`。
-词库来自只读目录 `D:\agent\happy\词语raw\`，由 `node scripts/build.mjs` 编译。
+词库来自项目内的只读目录 `词语raw\`，由 `node scripts/build.mjs` 编译。
 
 ## 1. 起服务与自测
 

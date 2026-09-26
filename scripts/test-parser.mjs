@@ -19,7 +19,8 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WORD_DIR = resolve(__dirname, '..');
-const RAW_DIR = resolve(WORD_DIR, '..', '词语raw');
+/** 与 build.mjs 同源：原始词表在项目根的「词语raw」里。 */
+const RAW_DIR = join(WORD_DIR, '词语raw');
 
 let passed = 0;
 const failures = [];
