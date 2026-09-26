@@ -6,7 +6,11 @@
  *
  * 覆盖：健康检查、词库、状态读写往返、并发 PATCH 不丢数据、
  *       uid 校验、导出 Markdown、静态资源、路径穿越防护。
+ *
+ * 期望值一律从 data/vocab.js 现算，不写死册数/单元数 —— 加册后本文件不需要改。
  */
+
+import { VOCAB } from '../assets/vocab.js';
 
 const PORT = (() => {
   const i = process.argv.indexOf('--port');
@@ -54,9 +58,10 @@ group('健康检查与词库');
   const r = await req('/api/health');
   ok('GET /api/health 返回 200', r.status === 200, `实际 ${r.status}`);
   ok('health.ok 为 true', r.payload.ok === true);
-  ok('health.units = 26', r.payload.units === 26, `实际 ${r.payload.units}`);
-  ok('health.cards = 1451', r.payload.cards === 1451, `实际 ${r.payload.cards}`);
-  ok('health.entries = 1298', r.payload.entries === 1298, `实际 ${r.payload.entries}`);
+  // 以 data/vocab.js 为基准，而不是写死数字 —— 加册后这里不该再需要跟着改一遍。
+  ok(`health.units = ${VOCAB.stats.units}`, r.payload.units === VOCAB.stats.units, `实际 ${r.payload.units}`);
+  ok(`health.cards = ${VOCAB.stats.cards}`, r.payload.cards === VOCAB.stats.cards, `实际 ${r.payload.cards}`);
+  ok(`health.entries = ${VOCAB.stats.entries}`, r.payload.entries === VOCAB.stats.entries, `实际 ${r.payload.entries}`);
   console.log(`  units=${r.payload.units} cards=${r.payload.cards} entries=${r.payload.entries}`);
 
   const v = await req('/api/vocab');

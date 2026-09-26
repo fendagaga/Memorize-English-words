@@ -166,6 +166,19 @@ export function splitSenses(rawPos, rawCn) {
       cn,
       meaningMissing: false,
     }));
+  } else if (cnSegs.length === 1) {
+    // 词性有好几段、但中文整体只写了一段（**一个 / 都没有**，例如
+    // `program | v. / n. | 编写程序；程序；(=programme) 节目；项目`）。
+    // 这时候按词性拆卡会造出没有中文的第二张卡 —— 题干空白，
+    // 且判分时没有任何关键词可用（judgeCn 对空释义永远返回 true），
+    // 等于白送一张「答什么都对」的卡。所以不拆：合成一张，
+    // 词性判分范围放宽到这一行所有词性，释义保留完整原文。
+    senses = [{
+      pos: posList.filter(Boolean).join(' / '),
+      cn: cnSegs[0],
+      meaningMissing: false,
+      merged: true,
+    }];
   } else {
     // 词性更多 → 多出来的只考词性。
     senses = posList.map((pos, i) => ({
@@ -280,7 +293,7 @@ export function parseVocabText(text, meta) {
     const posSegments = [...new Set(resolved.map((s) => s.pos))];
     /** 判分范围：把组合写法摊平，选这些里的任意一个都算对。 */
     const posScopes = [...new Set(
-      resolved.flatMap((s) => expandPosText(s.pos)).filter((p) => CARD_POS_OPTIONS.includes(p)),
+      resolved.flatMap((s) => expandScopeText(s.pos)).filter((p) => CARD_POS_OPTIONS.includes(p)),
     )];
     if (!posScopes.length) {
       const c = canonicalPos(resolved[0] ? resolved[0].pos : '');
@@ -346,6 +359,19 @@ export const CARD_POS_OPTIONS = [
 function expandPosText(text) {
   return String(text || '')
     .split(/[,&、]/)
+    .map((s) => s.trim())
+    .filter((s) => s && looksLikePos(s));
+}
+
+/**
+ * 把**判分范围**摊平成规范选项：`v. / n.` → ['v.','n.']。
+ * 比 expandPosText 多认 `/` 与 `／` —— 整行合卡（词性多段、中文没写 /）时
+ * resolved 里那个 pos 形如 `v. / n.`，不摊开的话 posScopes 会变成
+ * ["v. / n."]，用户选 `v.` 或 `n.` 全判错，而显示的正确答案偏偏是「v. / n.」。
+ */
+function expandScopeText(text) {
+  return String(text || '')
+    .split(/[/／,&、]/)
     .map((s) => s.trim())
     .filter((s) => s && looksLikePos(s));
 }

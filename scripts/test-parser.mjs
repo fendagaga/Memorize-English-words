@@ -11,10 +11,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  parseVocabText, splitSenses, wordCandidates, inferPos, looksLikePos,
+  parseVocabText, splitSenses, wordCandidates, inferPos, looksLikePos, buildVocab,
 } from './parse-vocab.mjs';
 import {
-  normalizeEn, judgeEn, normalizeCn, judgeCn, cnKeywords, judgePos, answerPosText,
+  normalizeEn, judgeEn, normalizeCn, judgeCn, cnKeywords, judgePos, answerPosText, VOCAB,
 } from '../assets/vocab.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -72,6 +72,23 @@ group('单行义项拆分 splitSenses');
 }
 
 {
+  // 词性两段、中文一个 / 都没写（八下 47 行、九上 1 行长这样）：
+  // 不能拆成两张卡 —— 第二张会没有中文，题干空白且 judgeCn 恒真。
+  const r = splitSenses('v. / n.', '编写程序；程序；(=programme) 节目；项目');
+  eq('中文没写 / 时整行合成一张卡', r.senses.length, 1);
+  eq('合卡保留整行词性', r.senses[0].pos, 'v. / n.');
+  eq('合卡释义完整保留', r.senses[0].cn, '编写程序；程序；(=programme) 节目；项目');
+  ok('合卡不算缺释义', r.senses[0].meaningMissing === false);
+  ok('合卡标记了 merged', r.senses[0].merged === true);
+}
+
+{
+  // 但中文真写了两段时（哪怕词性只有一段）该拆还是拆 —— 合卡规则不能误伤。
+  const r = splitSenses('n.', '甲 / 乙');
+  eq('中文两段照旧拆两张', r.senses.map((s) => `${s.pos}|${s.cn}`), ['n.|甲', 'n.|乙']);
+}
+
+{
   // 整段都是语法说明 → 没有可用词性，交由词性回退处理。
   const r = splitSenses('（用于女子姓氏或姓名前，不指明婚否）', '女士');
   eq('Ms 词性段为空', r.senses.map((s) => `${s.pos}|${s.cn}`), ['|女士']);
@@ -114,11 +131,17 @@ const RAW_FILES = [
   { file: '七年级上册.md', volumeId: '7a', grade: '七年级', term: '上册' },
   { file: '七年级下册.md', volumeId: '7b', grade: '七年级', term: '下册' },
   { file: '八年级上册.md', volumeId: '8a', grade: '八年级', term: '上册' },
+  { file: '八年级下册.md', volumeId: '8b', grade: '八年级', term: '下册' },
+  { file: '九年级上册.md', volumeId: '9a', grade: '九年级', term: '上册' },
+  // 注意：清单必须与 scripts/build.mjs 的 VOLUMES 保持一致，
+  // 否则新增册次会悄悄漏测（断言照样全绿，但覆盖不到新册）。
+  // 九年级下册尚未提供 —— 与 build.mjs 一样：文件不存在就跳过，不当作失败。
 ];
 
 let allEntries = [];
 let allUnits = [];
 let totalDropped = 0;
+const allSources = [];
 
 for (const spec of RAW_FILES) {
   const path = join(RAW_DIR, spec.file);
@@ -128,6 +151,7 @@ for (const spec of RAW_FILES) {
   }
   const text = readFileSync(path, 'utf8').replace(/^\uFEFF/, '');
   const parsed = parseVocabText(text, spec);
+  allSources.push({ text, meta: spec });
 
   // 用 ## 标题数反推单元数，确保没有漏单元也没有把注释行当单元。
   const headingCount = text.split(/\r?\n/).filter((l) => /^##\s+/.test(l)).length;
@@ -174,15 +198,61 @@ for (const spec of RAW_FILES) {
   console.log(`  ${spec.file}: ${parsed.units.length} 单元 · ${parsed.entries.length} 卡 · 剔除 ${parsed.dropped.length}`);
 }
 
+/* 独立重算整库，用来证明「构建产物 === 解析结果」。
+   仓库里的策略是：原始词表与 data/vocab.json 一起提交，所以这里能直接对拍；
+   一旦有人手改 data/vocab.json（或在没重跑构建的情况下改了原始词表），这条就会红。 */
+const aggregate = buildVocab(allSources, { builtAt: 'TEST' });
+const aggEntries = new Set(aggregate.cards.map((c) => `${c.unitId}|${c.sourceLine}`)).size;
+
+ok('解析出的册数与本脚本的源文件清单一致',
+  aggregate.stats.volumes === allSources.length,
+  `解析 ${aggregate.stats.volumes} 册，读到 ${allSources.length} 个源文件`);
+ok('解析出的单元数与 data/vocab.json 一致',
+  aggregate.stats.units === VOCAB.stats.units,
+  `解析 ${aggregate.stats.units}，产物 ${VOCAB.stats.units}`);
+ok('解析出的词条数与 data/vocab.json 一致',
+  aggEntries === VOCAB.stats.entries,
+  `解析 ${aggEntries}，产物 ${VOCAB.stats.entries}`);
+ok('解析出的背记卡数与 data/vocab.json 一致',
+  aggregate.stats.cards === VOCAB.stats.cards,
+  `解析 ${aggregate.stats.cards}，产物 ${VOCAB.stats.cards}`);
+ok('剔除条数与 data/vocab.json 一致',
+  aggregate.stats.dropped === VOCAB.stats.dropped,
+  `解析 ${aggregate.stats.dropped}，产物 ${VOCAB.stats.dropped}`);
+ok('一词多义卡数与 data/vocab.json 一致',
+  aggregate.stats.multiSense === VOCAB.stats.multiSense,
+  `解析 ${aggregate.stats.multiSense}，产物 ${VOCAB.stats.multiSense}`);
+ok('缺释义卡数与 data/vocab.json 一致',
+  aggregate.stats.meaningMissing === VOCAB.stats.meaningMissing,
+  `解析 ${aggregate.stats.meaningMissing}，产物 ${VOCAB.stats.meaningMissing}`);
+
+const aggIds = aggregate.cards.map((c) => c.id);
+const vocIds = VOCAB.cards.map((c) => c.id);
+const idDiff = aggIds.findIndex((id, i) => id !== vocIds[i]);
+ok('卡片 id 序列逐张一致（行号锚定的 id 不能漂移）',
+  aggIds.length === vocIds.length && idDiff === -1,
+  idDiff === -1
+    ? `解析 ${aggIds.length} 张，产物 ${vocIds.length} 张`
+    : `第 ${idDiff + 1} 张起不同：解析 ${aggIds[idDiff]}，产物 ${vocIds[idDiff]}`);
+
+const aggWord = aggregate.cards.map((c) => `${c.id}|${c.word}|${c.pos}|${c.meaning}`);
+const vocWord = VOCAB.cards.map((c) => `${c.id}|${c.word}|${c.pos}|${c.meaning}`);
+const wordDiff = aggWord.findIndex((v, i) => v !== vocWord[i]);
+ok('每张卡的词 / 词性 / 释义都与产物逐字一致',
+  aggWord.length === vocWord.length && wordDiff === -1,
+  wordDiff === -1
+    ? ''
+    : `第 ${wordDiff + 1} 张起不同：解析 ${aggWord[wordDiff]}，产物 ${vocWord[wordDiff]}`);
+
 const idSet = new Set(allEntries.map((c) => c.id));
 ok('全库卡片 id 唯一', idSet.size === allEntries.length,
   `${allEntries.length} 张卡只有 ${idSet.size} 个不同 id`);
 
-ok('单元总数为 26', allUnits.length === 26, `实际 ${allUnits.length}`);
-ok('词条数为 1298',
-  new Set(allEntries.map((c) => `${c.unitId}|${c.sourceLine}`)).size === 1298,
+ok('单元总数为 42', allUnits.length === 42, `实际 ${allUnits.length}`);
+ok('词条数为 2251',
+  new Set(allEntries.map((c) => `${c.unitId}|${c.sourceLine}`)).size === 2251,
   `实际 ${new Set(allEntries.map((c) => `${c.unitId}|${c.sourceLine}`)).size}`);
-ok('剔除 62 条专有名词/缩写', totalDropped === 62, `实际 ${totalDropped}`);
+ok('剔除 156 条专有名词/缩写', totalDropped === 156, `实际 ${totalDropped}`);
 ok('剔除的全部是专名或缩写',
   allEntries.every((c) => !/专有名词|缩写/.test(c.rawPos)));
 
@@ -205,7 +275,8 @@ eq('wolf 的复数提示保留', cardOf('wolf').note, '(pl. wolves)');
 eq('a / an 的拼写候选', cardOf('a / an').wordCandidates, ['a', 'an']);
 
 const phraseCards = allEntries.filter((c) => c.pos === '短语');
-ok('短语被当作词性而非语法说明', phraseCards.length === 194, `实际 ${phraseCards.length}`);
+ok('短语卡数与 data/vocab.json 一致', phraseCards.length === VOCAB.cards.filter((c) => c.pos === '短语').length,
+  `解析 ${phraseCards.length}，产物 ${VOCAB.cards.filter((c) => c.pos === '短语').length}`);
 ok('短语词条没有被错误推断成 n.', phraseCards.every((c) => c.posInferred === false));
 eq('look after 的词性', cardOf('look after').pos, '短语');
 eq('look after 的词性判分范围', cardOf('look after').posScopes, ['短语']);
@@ -222,6 +293,25 @@ ok('没有缺释义的卡（源数据里唯一的空释义已修复）',
   `实际 ${allEntries.filter((c) => c.meaningMissing).length}`);
 
 ok('每张卡都能取到释义便于判分', allEntries.every((c) => c.cn && c.cn.length > 0));
+
+/* ---- 词性多段、中文没写 / 的行：整行合卡，范围要摊平 ---- */
+
+// 源数据：`program | v. / n. | 编写程序；程序；(=programme) 节目；项目`（八下 L6）
+// 中文一个 / 都没写，所以不拆卡：一张卡、两个词性都算对。
+const merged = cardOf('program');
+eq('中文没写 / 的行不拆卡（只有一张）', allEntries.filter((c) => c.word === 'program').length, 1);
+eq('合卡保留整行词性原文', merged.pos, 'v. / n.');
+eq('合卡的判分范围被摊平成规范选项', merged.posScopes, ['v.', 'n.']);
+ok('合卡选 v. 算对', judgePos('v.', merged));
+ok('合卡选 n. 也算对', judgePos('n.', merged));
+ok('合卡选不相关的词性判错', !judgePos('adj.', merged));
+ok('合卡的释义保留完整原文', merged.cn.includes('编写程序') && merged.cn.includes('项目'), merged.cn);
+
+// 判分范围必须是规范选项，不能残留 `v. / n.` 这种整串 —— 否则用户选单个词性全判错。
+const slashScopes = allEntries.filter((c) => (c.posScopes || []).some((p) => /[/／]/.test(p)));
+ok('没有卡的 posScopes 残留 / 写法', slashScopes.length === 0,
+  slashScopes.slice(0, 3).map((c) => `${c.id} ${JSON.stringify(c.posScopes)}`).join('；'));
+ok('没有卡的 posScopes 为空', allEntries.every((c) => c.posScopes && c.posScopes.length > 0));
 
 /* ===================== 3. 英文判分 ===================== */
 

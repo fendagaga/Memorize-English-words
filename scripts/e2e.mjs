@@ -15,11 +15,17 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { VOCAB, overview } from '../assets/vocab.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const QA_DIR = resolve(__dirname, '..', '.qa');
 const PORT = process.env.PORT || 8787;
 const BASE = `http://127.0.0.1:${PORT}`;
 const UID = `e2e${Date.now().toString(16).slice(-12)}`;
+
+/** 期望值全部现算 —— 加册后这份脚本不需要改数字。 */
+const OV = overview();
+const UNITS_OF_GRADE_8 = VOCAB.units.filter((u) => u.grade === '八年级').length;
 
 let passed = 0;
 const failures = [];
@@ -58,6 +64,27 @@ function pinUid() {
   return evalJs(`localStorage.setItem('dsh_word_uid', ${JSON.stringify(UID)}), localStorage.removeItem('dsh_word_state_mirror'), 'pinned'`);
 }
 
+/**
+ * 把本轮要背的单元的进度清掉，让「背英文」一定从第 1 张卡开始。
+ *
+ * 服务端 PATCH 是**按 key 合并** progress 的，所以清不掉整表、只能逐单元覆盖。
+ * `index: 0` 不会被当成续背：study.html 只在 `p.index > 0 && p.index < queue.length
+ * && p.total === queue.length` 时才恢复位置（已核对 beginRound 的实现）。
+ *
+ * 为什么需要：测试 uid 虽然每轮都新生成，但浏览器 localStorage 里的 uid 会被
+ * pinUid 覆盖，而页面初始化时可能已经从服务端读到了上一次留下的进度，
+ * 于是页面从 15/47 起步，「点下一词后是第 2 题」这类断言就整段错位。
+ */
+function resetProgress(uid, unitIds) {
+  return fetch(`${BASE}/api/state`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-Word-Uid': uid },
+    body: JSON.stringify({
+      progress: Object.fromEntries(unitIds.map((id) => [id, { index: 0, mode: 'en', shuffled: false, total: 0 }])),
+    }),
+  }).then((r) => r.status).catch(() => 0);
+}
+
 console.log('═'.repeat(66));
 console.log('端到端全流程验收');
 console.log(`测试 uid：${UID}`);
@@ -70,22 +97,37 @@ ab(['set', 'viewport', '1440', '900']);
 ab(['open', `${BASE}/`]);
 sleep(1500);
 pinUid();
+// 清掉本轮要背的单元的存档进度，保证「背英文」从第 1 张卡开始。
+// 不清的话页面会接着上一次的进度走（实测从 15/47 起步），后面整段断言全错位。
+{
+  const status = await resetProgress(UID, ['7a-u1']);
+  console.log(`  预清进度 7a-u1 → HTTP ${status}`);
+}
 ab(['open', `${BASE}/`]);
 sleep(1800);
 
 {
-  const r = evalJs(`(() => ({
-    title: document.title,
-    stats: (document.body.innerText.match(/(\\d+)\\s*个单元[\\s\\S]{0,40}?(\\d+)\\s*词条[\\s\\S]{0,30}?(\\d+)\\s*个义项/)||[]).slice(1),
-    hasUnitsLink: !!document.querySelector('a[href="units.html"]'),
-    hasWrongLink: !!document.querySelector('a[href*="unit=wrong"]'),
-    hasStarLink: !!document.querySelector('a[href*="unit=star"]'),
-    console: ''
-  }))()`);
+  // 直接读页面上的 [data-num] 元素，不再用正则去啃 innerText ——
+  // innerText 的换行/空白规范化会让「◯ 42 个单元 · 2251 词条」这类串时灵时不灵。
+  const r = evalJs(`(() => {
+    const num = (k) => {
+      const el = document.querySelector('[data-num="' + k + '"]');
+      return el ? el.textContent.trim() : null;
+    };
+    return {
+      title: document.title,
+      units: num('units'),
+      entries: num('entries'),
+      cards: num('cards'),
+      hasUnitsLink: !!document.querySelector('a[href="units.html"]'),
+      hasWrongLink: !!document.querySelector('a[href*="unit=wrong"]'),
+      hasStarLink: !!document.querySelector('a[href*="unit=star"]'),
+    };
+  })()`);
   ok('首页标题正确', /知新|单词|背/.test(r.title), r.title);
-  ok('首页统计为 26 / 1298 / 1451',
-    r.stats[0] === '26' && r.stats[1] === '1298' && r.stats[2] === '1451',
-    JSON.stringify(r.stats));
+  ok(`首页统计为 ${OV.units} / ${OV.entries} / ${OV.cards}`,
+    r.units === String(OV.units) && r.entries === String(OV.entries) && r.cards === String(OV.cards),
+    `读到 单元=${r.units} 词条=${r.entries} 义项=${r.cards}`);
   ok('有单元索引入口', r.hasUnitsLink);
   ok('有错题本入口', r.hasWrongLink);
   ok('有星标入口', r.hasStarLink);
@@ -109,9 +151,9 @@ sleep(1800);
       client: document.documentElement.clientWidth,
     };
   })()`);
-  ok('26 张单元卡', r.total === 26, `实际 ${r.total}`);
-  ok('默认全部可见', r.visible === 26, `实际 ${r.visible}`);
-  ok('计数区显示 26', /26/.test(r.countText), r.countText.replace(/\n/g, ' '));
+  ok(`${OV.units} 张单元卡`, r.total === OV.units, `实际 ${r.total}`);
+  ok('默认全部可见', r.visible === OV.units, `实际 ${r.visible}`);
+  ok(`计数区显示 ${OV.units}`, r.countText.includes(String(OV.units)), r.countText.replace(/\n/g, ' '));
   ok('无横向滚动', r.scroll === r.client, `${r.scroll} vs ${r.client}`);
 }
 
@@ -120,7 +162,7 @@ evalJs(`Array.from(document.querySelectorAll('button')).find(b => b.innerText.tr
 sleep(500);
 {
   const n = evalJs(`Array.from(document.querySelectorAll('.card')).filter(c => !c.hidden).length`);
-  ok('八年级筛选 → 8 个单元', n === 8, `实际 ${n}`);
+  ok(`八年级筛选 → ${UNITS_OF_GRADE_8} 个单元`, n === UNITS_OF_GRADE_8, `实际 ${n}`);
 }
 evalJs(`Array.from(document.querySelectorAll('button')).find(b => b.innerText.trim() === '全部年级').click(), 'ok'`);
 sleep(400);

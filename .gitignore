@@ -12,6 +12,7 @@ userData/*.json
 .qa/final-*.png
 .qa/v-*.png
 .qa/units-detail-verify.png
+.qa/verify-*.png
 
 # ── 系统与编辑器 ─────────────────────────────────────────────
 Thumbs.db

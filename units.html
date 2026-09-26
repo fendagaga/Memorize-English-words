@@ -154,8 +154,11 @@
     transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
                 transform .18s var(--ease), background var(--dur) var(--ease);
   }
-  .card.unit[data-volume="7b"] { --band-1: var(--indigo-wash); --band-2: rgba(47, 74, 92, .40); }
-  .card.unit[data-volume="8a"] { --band-1: var(--gold-wash); --band-2: rgba(169, 133, 47, .46); }
+  /* 册次色带：一个年级一个色系，上册浅一档、下册深一档 —— 两册摆在一起要能一眼分清。 */
+  .card.unit[data-volume="7b"] { --band-1: var(--indigo-wash);  --band-2: rgba(47, 74, 92, .40); }
+  .card.unit[data-volume="8a"] { --band-1: var(--gold-wash);    --band-2: rgba(169, 133, 47, .46); }
+  .card.unit[data-volume="8b"] { --band-1: #E2E9DF;             --band-2: rgba(74, 94, 66, .42); }
+  .card.unit[data-volume="9a"] { --band-1: var(--cinnabar-wash); --band-2: rgba(102, 92, 78, .48); }
 
   .card.unit:hover { border-color: var(--line-strong); box-shadow: var(--shadow-soft); transform: translateY(-2px); }
   .card.unit:focus-within { border-color: var(--line-strong); }
@@ -411,20 +414,13 @@
     <div class="ctl-main">
       <div class="ctl-block">
         <span class="ctl-label" id="lbl-grade">按年级</span>
-        <div class="ctl-row" role="group" aria-labelledby="lbl-grade" id="filter-grade">
-          <button class="btn" type="button" data-value="all" aria-pressed="true">全部年级</button>
-          <button class="btn" type="button" data-value="七年级" aria-pressed="false">七年级</button>
-          <button class="btn" type="button" data-value="八年级" aria-pressed="false">八年级</button>
-        </div>
+        <!-- 按钮由脚本按词库实际拥有的年级生成（见 renderFilters），加册后自动多出「九年级」 -->
+        <div class="ctl-row" role="group" aria-labelledby="lbl-grade" id="filter-grade"></div>
       </div>
 
       <div class="ctl-block">
         <span class="ctl-label" id="lbl-term">按册次</span>
-        <div class="ctl-row" role="group" aria-labelledby="lbl-term" id="filter-term">
-          <button class="btn" type="button" data-value="all" aria-pressed="true">全部册次</button>
-          <button class="btn" type="button" data-value="上册" aria-pressed="false">上册</button>
-          <button class="btn" type="button" data-value="下册" aria-pressed="false">下册</button>
-        </div>
+        <div class="ctl-row" role="group" aria-labelledby="lbl-term" id="filter-term"></div>
       </div>
 
       <div class="ctl-block">
@@ -566,7 +562,7 @@ let selectedUnit = null;   // 对应的单元数据
 const pad2 = (n) => String(n).padStart(2, '0');
 
 /* ======================================================================
-   1. 渲染 26 张单元卡片（数据全部来自 VOCAB.units）
+   1. 渲染单元卡片（数据全部来自 VOCAB.units）
    ====================================================================== */
 function renderUnits() {
   const frag = document.createDocumentFragment();
@@ -607,7 +603,7 @@ function field(card, label) {
 }
 
 /* ======================================================================
-   2. 概览数字（26 单元 / 1298 词条 / 1451 义项，全部现算，不写死）
+   2. 概览数字（册数 / 单元 / 词条 / 义项全部现算，不写死）
    ====================================================================== */
 function renderStatsInto(el) {
   if (!el) return;
@@ -641,6 +637,47 @@ function renderCount(shown) {
 /* ======================================================================
    3. 筛选与视图密度（分组内互斥，两组联动过滤）
    ====================================================================== */
+
+/**
+ * 按当前词库刷新「按年级 / 按册次」的选项按钮 —— 选项只列真正有单元的取值，
+ * 数据里没有的年级不会出现一个注定筛出 0 个单元的死按钮。
+ * 原来是写死的三个年级按钮，加了九年级上册之后页面就少一个选项，所以改成现算。
+ */
+function renderFilters() {
+  const specs = [
+    { key: 'grade', box: GROUPS.grade, all: '全部年级' },
+    { key: 'term', box: GROUPS.term, all: '全部册次' },
+  ];
+
+  return specs.map(({ key, box, all }) => {
+    const seen = new Set();
+    const values = [];
+    for (const card of cards) {
+      const value = key === 'grade' ? card.dataset.grade : card.dataset.term;
+      if (value && !seen.has(value)) { seen.add(value); values.push(value); }
+    }
+
+    const frag = document.createDocumentFragment();
+    const add = (value, label) => {
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.type = 'button';
+      btn.dataset.value = value;
+      btn.setAttribute('aria-pressed', value === state[key] ? 'true' : 'false');
+      btn.textContent = label;
+      frag.appendChild(btn);
+    };
+    add('all', all);
+    // 单元已按册次顺序（七年级上册 → 九年级上册）排过，这里的去重顺序天然就是显示顺序
+    values.forEach((value) => add(value, value));
+
+    // 选项换了一批，若原选中项不复存在（例如词库里那一册被删了）就退回「全部」
+    if (state[key] !== 'all' && !values.includes(state[key])) state[key] = 'all';
+    box.replaceChildren(frag);
+    return box;
+  });
+}
+
 function apply() {
   let shown = 0;
   for (const card of cards) {
@@ -677,14 +714,10 @@ function bindGroup(key) {
 }
 
 function resetFilters() {
-  state.grade = 'all';
-  state.term = 'all';
-  for (const key of ['grade', 'term']) {
-    for (const b of GROUPS[key].querySelectorAll('button[data-value]')) {
-      b.setAttribute('aria-pressed', b.dataset.value === 'all' ? 'true' : 'false');
-    }
-  }
-  apply();
+  // 走 setGroup，让按钮的 aria-pressed 与 state 始终由同一处逻辑维护
+  setGroup('grade', 'all');
+  setGroup('term', 'all');
+  apply();  // 两个值本来就是 all 时 setGroup 不会重跑，这里保证计数与空态一定刷新
   const first = GROUPS.grade.querySelector('button[data-value="all"]');
   if (first) first.focus();
 }
@@ -847,6 +880,7 @@ async function syncHeader() {
 cards = renderUnits();
 renderStatsInto(statsBox);
 renderStatsInto(colophonBox);
+renderFilters();
 bindEvents();
 apply();
 syncHeader();

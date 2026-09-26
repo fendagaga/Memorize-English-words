@@ -28,11 +28,12 @@ node scripts/serve.mjs        # 起在 http://127.0.0.1:8787
 
 | 项 | 值 |
 |---|---|
-| 册次 | 3（七年级上册 / 七年级下册 / 八年级上册） |
-| 单元 | **26** |
-| 词条 | **1298**（已剔除 62 条专有名词与缩写） |
-| 背记卡（义项粒度） | **1451** |
-| 一词多义卡 | 299 |
+| 册次 | 5（七年级上/下册、八年级上/下册、九年级上册；九年级下册尚未提供） |
+| 单元 | **42** |
+| 词条 | **2251**（已剔除 156 条专有名词与缩写） |
+| 背记卡（义项粒度） | **2458** |
+| 一词多义卡 | 406 |
+| 缺释义卡 | 0（词性多段而中文没写 `/` 的行按整行合卡，不再拆出空释义卡） |
 | 词性选项表 | `n.` `v.` `modal v.` `aux v.` `adj.` `adv.` `prep.` `pron.` `conj.` `interj.` `art.` `num.` `短语` `句型`（`num.` 实际没出现，所以 `posOptions` 是 13 个） |
 
 ## 3. 数据接口
@@ -82,7 +83,8 @@ node scripts/serve.mjs        # 起在 http://127.0.0.1:8787
 ```
 
 > 各单元的 `entryCount` / `cardCount` **不要写死**，一律从 `VOCAB.units` 读。
-> 单位数换算：26 个单元 = 343 + 437 + 518 词条，合计 1298 词条 / 1451 义项。
+> 单位数换算：42 个单元 = 343 + 437 + 518 + 521 + 432 词条，
+> 合计 2251 词条 / 2458 义项。
 
 `posPresent` 已经按固定顺序排好，**背词性模式的词性按钮直接用它**，不要用全局 `posOptions`。
 
@@ -97,7 +99,7 @@ node scripts/serve.mjs        # 起在 http://127.0.0.1:8787
 
 - `VOCAB.stats` → `{ volumes, units, entries, cards, dropped, multiSense, inferredPos, meaningMissing }`
 - `VOCAB.posOptions` → 固定词性选项表（已过滤没出现过的）
-- `VOCAB.dropped` → 被剔除的 62 条，`{ word, rawPos, reason, volumeId, sourceLine }`
+- `VOCAB.dropped` → 被剔除的 156 条，`{ word, rawPos, reason, volumeId, sourceLine }`
 
 ## 4. 资产出口（直接 `import`，不要复制粘贴实现）
 
