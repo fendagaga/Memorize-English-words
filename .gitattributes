@@ -7,3 +7,7 @@
 *.ico binary
 *.woff binary
 *.woff2 binary
+
+# Windows 批处理按 CRLF 存库（cmd.exe 对 LF 结尾的 .bat 容错有限）。
+*.bat text eol=crlf
+*.cmd text eol=crlf
