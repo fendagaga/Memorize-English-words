@@ -50,9 +50,9 @@
     width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint);
     box-shadow: 0 0 0 3px var(--line-soft);
   }
-  .modehint[data-mode="server"] .dot { background: var(--indigo); }
-  .modehint[data-mode="local"] { color: var(--cinnabar); }
-  .modehint[data-mode="local"] .dot { background: var(--cinnabar); box-shadow: 0 0 0 3px var(--cinnabar-wash); }
+  .modehint[data-mode="browser"] .dot { background: var(--indigo); }
+  .modehint[data-mode="memory"] { color: var(--cinnabar); }
+  .modehint[data-mode="memory"] .dot { background: var(--cinnabar); box-shadow: 0 0 0 3px var(--cinnabar-wash); }
 
   .head {
     display: grid;
@@ -387,7 +387,7 @@
   <div class="wrap">
     <div class="mh-top">
       <p class="label">宣纸 · 初中英语词表</p>
-      <p class="modehint" id="mode-hint" data-mode="pending" aria-live="polite"><span class="dot" aria-hidden="true"></span>正在连接服务端……</p>
+      <p class="modehint" id="mode-hint" data-mode="pending" aria-live="polite"><span class="dot" aria-hidden="true"></span>正在读取本机存储……</p>
     </div>
 
     <div class="head rule-double">
@@ -482,7 +482,7 @@
     <div class="foot-in">
       <div>
         <h2>这一页只读词库</h2>
-        <p>单元卡片全部由 data/vocab.js 渲染，筛选与视图切换都在浏览器里完成，不改动任何词条。错题与星标记在服务端，连不上服务端时退回本机存储。</p>
+        <p>单元卡片全部由 data/vocab.js 渲染，筛选与视图切换都在浏览器里完成，不改动任何词条。错题与星标记在本机浏览器（localStorage），不经过服务器；清空浏览器数据会一起清掉。</p>
       </div>
       <nav class="footnav" aria-label="相关页面">
         <a href="index.html">首页</a>
@@ -854,13 +854,13 @@ function setBadge(linkId, countId, n) {
 
 function renderModeHint() {
   const hint = document.getElementById('mode-hint');
-  const local = getStorageMode() === 'local';
-  hint.dataset.mode = local ? 'local' : 'server';
+  const memory = getStorageMode() === 'memory';
+  hint.dataset.mode = memory ? 'memory' : 'browser';
   hint.textContent = '';
   const dot = document.createElement('span');
   dot.className = 'dot';
   dot.setAttribute('aria-hidden', 'true');
-  hint.append(dot, document.createTextNode(local ? '本地模式（未连服务端）' : '已连服务端'));
+  hint.append(dot, document.createTextNode(memory ? '浏览器存储不可用' : '本机浏览器存储'));
 }
 
 async function syncHeader() {

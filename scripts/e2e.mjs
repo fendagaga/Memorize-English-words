@@ -4,10 +4,14 @@
  *   node scripts/e2e.mjs
  *
  * 覆盖：首页 → 单元索引（筛选/选卡）→ 背英文（答错→解析→下一词）→ 背词性（答对→自动进）
- *       → 走完整轮 → 成绩小结 → 错题本视图 → 导出 → 进度恢复。
+ *       → 走完整轮 → 成绩小结 → 错题本视图 → 本机导出 → 星标。
  *
  * 答题由页面自己的判分函数决定，脚本只负责「读题 → 作答 → 提交」，
  * 因此每一张卡（含一词多义）都会被真实判分一遍。
+ *
+ * 状态全在浏览器本机（localStorage），所以没有「服务端落库」这一步：
+ * 改为直接读那四个键来校验。跑之前会把它们**备份**，跑完（含中途出错）原样还原，
+ * 免得把浏览器里已有的错题本/星标清掉。
  */
 
 import { execFileSync } from 'node:child_process';
@@ -21,7 +25,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const QA_DIR = resolve(__dirname, '..', '.qa');
 const PORT = process.env.PORT || 8787;
 const BASE = `http://127.0.0.1:${PORT}`;
-const UID = `e2e${Date.now().toString(16).slice(-12)}`;
+
+/** 状态键（与 assets/api.js 里的 KEYS 一致）。 */
+const STORE_KEYS = ['dsh_word_mistakes', 'dsh_word_stars', 'dsh_word_progress', 'dsh_word_settings'];
 
 /** 期望值全部现算 —— 加册后这份脚本不需要改数字。 */
 const OV = overview();
@@ -59,35 +65,49 @@ function shot(name) {
   try { ab(['screenshot', join(QA_DIR, name)]); } catch { /* 忽略 */ }
 }
 
-/* 页面内：把 UID 固定成测试专用，避免污染真实浏览器的错题本 */
-function pinUid() {
-  return evalJs(`localStorage.setItem('dsh_word_uid', ${JSON.stringify(UID)}), localStorage.removeItem('dsh_word_state_mirror'), 'pinned'`);
+/* 页面内：本机状态的备份 / 还原 / 清空。
+ *
+ * 这一轮会在浏览器里真实答题，会写错题本、星标与进度 —— 先备份再清空，
+ * 跑完（含中途抛错，走 exit 钩子）原样还回去，用户自己背的记录不受影响。 */
+function backupStore() {
+  return evalJs(`(() => {
+    const out = {};
+    for (const k of ${JSON.stringify(STORE_KEYS)}) out[k] = localStorage.getItem(k);
+    return out;
+  })()`);
 }
 
-/**
- * 把本轮要背的单元的进度清掉，让「背英文」一定从第 1 张卡开始。
- *
- * 服务端 PATCH 是**按 key 合并** progress 的，所以清不掉整表、只能逐单元覆盖。
- * `index: 0` 不会被当成续背：study.html 只在 `p.index > 0 && p.index < queue.length
- * && p.total === queue.length` 时才恢复位置（已核对 beginRound 的实现）。
- *
- * 为什么需要：测试 uid 虽然每轮都新生成，但浏览器 localStorage 里的 uid 会被
- * pinUid 覆盖，而页面初始化时可能已经从服务端读到了上一次留下的进度，
- * 于是页面从 15/47 起步，「点下一词后是第 2 题」这类断言就整段错位。
- */
-function resetProgress(uid, unitIds) {
-  return fetch(`${BASE}/api/state`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'X-Word-Uid': uid },
-    body: JSON.stringify({
-      progress: Object.fromEntries(unitIds.map((id) => [id, { index: 0, mode: 'en', shuffled: false, total: 0 }])),
-    }),
-  }).then((r) => r.status).catch(() => 0);
+function restoreStore(backup) {
+  return evalJs(`(() => {
+    const b = ${JSON.stringify(backup || {})};
+    for (const [k, v] of Object.entries(b)) {
+      if (v === null || v === undefined) localStorage.removeItem(k);
+      else localStorage.setItem(k, v);
+    }
+    return 'restored';
+  })()`);
+}
+
+/** 清空本机状态，保证每轮从第 1 张卡、空错题本开始。 */
+function clearStore() {
+  return evalJs(`((${JSON.stringify(STORE_KEYS)}.forEach((k) => localStorage.removeItem(k))), 'cleared')`);
+}
+
+/** 读回本机四个键（解析成对象），给后面的落库校验用。 */
+function readStore() {
+  return evalJs(`(() => {
+    const out = {};
+    for (const k of ${JSON.stringify(STORE_KEYS)}) {
+      const raw = localStorage.getItem(k);
+      out[k] = raw ? JSON.parse(raw) : null;
+    }
+    return out;
+  })()`);
 }
 
 console.log('═'.repeat(66));
 console.log('端到端全流程验收');
-console.log(`测试 uid：${UID}`);
+console.log(`目标：${BASE}（状态存在浏览器本机）`);
 console.log('═'.repeat(66));
 
 /* ===================== 1. 首页 ===================== */
@@ -96,13 +116,12 @@ console.log('\n── 1. 首页');
 ab(['set', 'viewport', '1440', '900']);
 ab(['open', `${BASE}/`]);
 sleep(1500);
-pinUid();
-// 清掉本轮要背的单元的存档进度，保证「背英文」从第 1 张卡开始。
-// 不清的话页面会接着上一次的进度走（实测从 15/47 起步），后面整段断言全错位。
-{
-  const status = await resetProgress(UID, ['7a-u1']);
-  console.log(`  预清进度 7a-u1 → HTTP ${status}`);
-}
+// 先把浏览器里已有的状态备份下来，跑完还回去；再清空，保证从第 1 张卡起步。
+const STORE_BACKUP = backupStore();
+process.on('exit', () => {
+  try { restoreStore(STORE_BACKUP); } catch { /* 浏览器已关之类，忽略 */ }
+});
+clearStore();
 ab(['open', `${BASE}/`]);
 sleep(1800);
 
@@ -114,6 +133,7 @@ sleep(1800);
       const el = document.querySelector('[data-num="' + k + '"]');
       return el ? el.textContent.trim() : null;
     };
+    const modeLine = document.querySelector('#modeLine');
     return {
       title: document.title,
       units: num('units'),
@@ -122,6 +142,9 @@ sleep(1800);
       hasUnitsLink: !!document.querySelector('a[href="units.html"]'),
       hasWrongLink: !!document.querySelector('a[href*="unit=wrong"]'),
       hasStarLink: !!document.querySelector('a[href*="unit=star"]'),
+      mode: (document.querySelector('#modeText') || {}).textContent || '',
+      modeKind: modeLine ? modeLine.dataset.mode : '',
+      foot: (document.querySelector('#footMode') || {}).textContent || '',
     };
   })()`);
   ok('首页标题正确', /知新|单词|背/.test(r.title), r.title);
@@ -131,6 +154,11 @@ sleep(1800);
   ok('有单元索引入口', r.hasUnitsLink);
   ok('有错题本入口', r.hasWrongLink);
   ok('有星标入口', r.hasStarLink);
+  ok('首页标明状态存在本机浏览器', r.mode.includes('本机浏览器存储') && r.modeKind === 'browser',
+    `mode=${r.mode}／data-mode=${r.modeKind}`);
+  ok('页脚不再宣称服务端同步/换设备接着背',
+    r.foot.includes('localStorage') && !/服务端|换一台设备/.test(r.foot), r.foot);
+  console.log(`  存储状态：${r.mode}`);
 }
 shot('e2e-1-home.png');
 
@@ -393,24 +421,37 @@ sleep(2200);
 }
 shot('e2e-7-wrongbook.png');
 
-/* ===================== 8. 服务端状态 ===================== */
+/* ===================== 8. 浏览器本机落库 ===================== */
 
-console.log('\n── 8. 服务端落库校验');
+console.log('\n── 8. 浏览器本机（localStorage）落库校验');
 {
-  const res = await fetch(`${BASE}/api/state`, { headers: { 'X-Word-Uid': UID } });
-  const data = await res.json();
-  const mistakes = Object.keys(data.state.mistakes || {});
-  ok('服务端记录了错题', mistakes.length >= 1, `${mistakes.length} 条`);
+  const store = readStore();
+  const mistakes = Object.keys(store.dsh_word_mistakes || {});
+  ok('错题写进了 dsh_word_mistakes', mistakes.length >= 1, `${mistakes.length} 条`);
   ok('错题 id 是行号锚定格式', mistakes.every((id) => /#L\d+#\d+$/.test(id)), mistakes.slice(0, 3).join(','));
-  ok('进度已保存', Object.keys(data.state.progress || {}).length >= 1,
-    JSON.stringify(data.state.progress));
+  ok('错题记下了错误模式',
+    mistakes.every((id) => Array.isArray(store.dsh_word_mistakes[id].modes) && store.dsh_word_mistakes[id].modes.length >= 1),
+    JSON.stringify(store.dsh_word_mistakes[mistakes[0]]));
+  ok('进度写进了 dsh_word_progress', Object.keys(store.dsh_word_progress || {}).length >= 1,
+    JSON.stringify(store.dsh_word_progress));
+  ok('错题与进度是两个互不干扰的键',
+    !!store.dsh_word_mistakes && !!store.dsh_word_progress
+    && !('mistakes' in (store.dsh_word_progress || {})));
 
-  const exp = await fetch(`${BASE}/api/export/wrongbook.md`, { headers: { 'X-Word-Uid': UID } });
-  const md = await exp.text();
-  ok('导出返回 Markdown 表格', md.includes('| 单词 | 词性 | 中文释义 |'));
-  ok('导出内容非空行', md.split('\n').filter((l) => l.startsWith('| ') && !l.includes('---')).length >= 2,
-    `${md.split('\n').filter((l) => l.startsWith('| ') && !l.includes('---')).length} 行数据`);
-  writeFileSync(join(QA_DIR, 'e2e-wrongbook-export.md'), md, 'utf8');
+  // 服务端不该再认得状态接口
+  const status = evalJs(`fetch('/api/state').then((r) => r.status).catch(() => 0)`);
+  ok('服务端 /api/state 已移除（404）', status === 404, `实际 ${status}`);
+
+  // 导出完全在页面里生成（就是按钮走的那条路）
+  const md = evalJs(`(async () => {
+    const state = await window.DSH_API.loadState();
+    return await window.DSH_API.buildWrongbookMarkdown(state);
+  })()`);
+  const text = typeof md === 'string' ? md : String(md);
+  ok('导出返回 Markdown 表格', text.includes('| 单词 | 词性 | 中文释义 |'));
+  ok('导出内容非空行', text.split('\n').filter((l) => l.startsWith('| ') && !l.includes('---')).length >= 2,
+    `${text.split('\n').filter((l) => l.startsWith('| ') && !l.includes('---')).length} 行数据`);
+  writeFileSync(join(QA_DIR, 'e2e-wrongbook-export.md'), text, 'utf8');
 }
 
 /* ===================== 9. 星标 ===================== */
@@ -429,14 +470,27 @@ sleep(2000);
   })()`);
   ok('星标视图可见', r.visible);
   ok('星标里出现了刚标的那张卡', !/还是空的|还没有/.test(r.text), r.text.split('\n').slice(0, 4).join(' ｜ '));
+
+  const stars = readStore().dsh_word_stars || {};
+  const alive = Object.values(stars).filter((rec) => rec && !rec.removedAt);
+  ok('星标写进了 dsh_word_stars', alive.length >= 1, JSON.stringify(stars));
+  ok('星标记下了所属单元', alive.every((rec) => typeof rec.unitId === 'string' && rec.unitId), JSON.stringify(alive));
 }
 
 /* ===================== 汇总 ===================== */
 
+// 跑完先把浏览器里原有的状态还回去，再报结果
+try {
+  restoreStore(STORE_BACKUP);
+  console.log('\n── 已还原测试前的浏览器本机状态');
+} catch (err) {
+  console.log(`\n── 还原浏览器状态失败（不影响验收结论）：${err.message}`);
+}
+
 console.log(`\n${'═'.repeat(66)}`);
 mkdirSync(QA_DIR, { recursive: true });
 writeFileSync(join(QA_DIR, 'e2e-result.json'),
-  JSON.stringify({ uid: UID, answered, summaryReached, passed, failures }, null, 2), 'utf8');
+  JSON.stringify({ base: BASE, storage: 'localStorage', answered, summaryReached, passed, failures }, null, 2), 'utf8');
 
 if (failures.length) {
   console.log(`✗ 失败 ${failures.length} 项，通过 ${passed} 项\n`);

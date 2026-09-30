@@ -55,7 +55,7 @@
       "name": "错题本",
       "path": "/study.html?unit=wrong"
     },
-    "total": 45,
+    "total": 18,
     "fails": [],
     "hollows": []
   },
@@ -64,7 +64,7 @@
       "name": "星标",
       "path": "/study.html?unit=star"
     },
-    "total": 23,
+    "total": 17,
     "fails": [],
     "hollows": []
   },

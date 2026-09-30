@@ -131,18 +131,20 @@ import {
 
 ```js
 import {
-  loadState, patchState, refreshState, getStorageMode, getLastError, hasPendingSync,
-  mistakeList, recordMistake, clearMistake, clearAllMistakes,
+  loadState, patchState, refreshState, getStorageMode, getLastError,
+  mistakeList, recordMistake, clearMistake, clearAllMistakes, autoClearOnCorrect,
   starList, isStarred, toggleStar,
   saveProgress, getProgress, lastStudied, saveSettings,
-  cardIndex, exportWrongbookUrl, buildWrongbookMarkdown, downloadText, checkHealth,
+  cardIndex, buildWrongbookMarkdown, downloadText, checkHealth,
 } from './assets/api.js';
 ```
 
-- 全部返回 Promise（`await` 用），已内置**离线降级**：拿不到服务器就自动用 localStorage，不抛异常。
-  `getStorageMode()` 返回 `'server'` 或 `'local'`，界面右上角请提示当前模式。
-- **离线期间的改动会在服务器恢复后自动补同步**（`hasPendingSync()` 为 `true` 表示还有没推上去的）。
-  不需要页面做任何事；如果界面上有「已同步 / 待同步」状态位，可以用 `hasPendingSync()` 显示。
+- 状态**全部存在浏览器本机**（`localStorage`，四个键见第 5 节），**不发任何状态请求**。
+  出口仍是 Promise（照旧 `await` 用），已内置降级：浏览器不让写本机存储时落到内存，
+  功能照常但关页即失。
+- `getStorageMode()` 返回 `'browser'`（已写本机存储）或 `'memory'`（只能用内存）。
+  界面右上角/页脚按这个提示，文案与圆点颜色一起变（不要只靠颜色）。
+- `getLastError()` 给出最近一次存储异常的文字（配额超限、隐私模式等），可空。
 - `recordMistake(cardId, mode)` —— `mode` 取 `'en'` / `'pos'`（背词性模式答错统一记 `'pos'`）。
   错次累加 + 模式并集，**按卡片 id 去重**（也就是按单词义项去重）。
   内部是「读-改-写」原子操作，连按回车两次会正确累加到 2。
@@ -151,8 +153,7 @@ import {
 - `starList(state)` / `isStarred(state, cardId)` / `toggleStar(cardId, unitId)`。
 - `saveProgress(unitId, { index, mode, shuffled, total })` / `getProgress(state, unitId)` / `lastStudied(state)`。
 - `saveSettings({ senseSplit, ttsAccent })`。
-- 导出：优先让浏览器去 `/api/export/wrongbook.md`（服务端生成，最全）；
-  服务端不可用时用下面这行兜底 —— **注意 `await`**，它现在是异步的：
+- 导出：**完全在浏览器里生成**，注意 `await`：
 
   ```js
   const md = await buildWrongbookMarkdown(state);        // 不传 lookup 会自动加载卡片索引
@@ -161,19 +162,40 @@ import {
 
   也可以传自定义查表：`await buildWrongbookMarkdown(state, (id) => index.get(id))`。
   `cardIndex()` 返回 `Map<cardId, card>`，需要自己查卡片时用它。
+- `checkHealth()` —— 只探一次 `/api/health`（首页显示词库构建时间、比对单元数用），
+  与状态无关，失败返回 `{ ok:false, reason }`。
 
-## 5. 状态结构（服务端 `userData/<uid>.json`）
+## 5. 状态结构（浏览器 `localStorage`）
+
+四类数据各占一个键，互不干扰；服务端**不保存任何状态**（`userData/` 只是旧文件的历史备份）。
+
+```jsonc
+// dsh_word_mistakes
+{ "<cardId>": { "count": 2, "modes": ["en","pos"], "lastWrongAt": "ISO", "clearedAt": null } }
+
+// dsh_word_stars
+{ "<cardId>": { "at": "ISO", "unitId": "7a-u1", "removedAt": null } }
+
+// dsh_word_progress
+{ "<unitId>": { "index": 12, "mode": "en", "shuffled": false, "total": 48, "updatedAt": "ISO", "seq": 3 } }
+
+// dsh_word_settings
+{ "senseSplit": true, "ttsAccent": "en-GB" }
+```
+
+组装起来的形状（`loadState()` 的返回值）：
 
 ```jsonc
 {
   "version": 1,
-  "mistakes": { "<cardId>": { "count": 2, "modes": ["en","pos"], "lastWrongAt": "ISO", "clearedAt": null } },
-  "stars":    { "<cardId>": { "at": "ISO", "unitId": "7a-u1", "removedAt": null } },
-  "progress": { "<unitId>": { "index": 12, "mode": "en", "shuffled": false, "total": 48, "updatedAt": "ISO" } },
-  "settings": { "senseSplit": true, "ttsAccent": "en-GB" },
-  "updatedAt": "ISO"
+  "mistakes": { ... }, "stars": { ... }, "progress": { ... }, "settings": { ... },
+  "updatedAt": null            // 分键存储，没有统一的落盘时间戳；字段只为形状兼容保留
 }
 ```
+
+写操作只写**发生变化的那一个键**（写错题不动星标），所以多标签页同时用不会互相整表覆盖。
+旧键 `dsh_word_state_mirror` / `dsh_word_pending_sync` / `dsh_word_uid` 是服务端时代的遗留，
+新代码**不读也不删**。
 
 ## 6. 样式系统（`assets/paper.css`）
 

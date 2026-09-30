@@ -1,10 +1,10 @@
 /**
- * 状态层测试 —— assets/api.js 的并发正确性与离线降级。
+ * 状态层测试 —— assets/api.js：浏览器缓存键位、并发正确性、降级行为、本地导出。
  *
  *   node scripts/test-state.mjs
  *
- * api.js 依赖浏览器环境（localStorage / fetch / location），
- * 这里用最小桩件在 Node 里跑真实模块，测的是真实代码路径。
+ * 状态全部存在 localStorage，所以这一套**不需要服务器、也不碰网络**：
+ * 下面装了一个「网络哨兵」fetch，只要状态层敢发请求就会被断言抓住。
  */
 
 /* ========================== 浏览器环境桩 ========================== */
@@ -17,42 +17,44 @@ class MemoryStorage {
   clear() { this.map.clear(); }
 }
 
-/** 服务端桩：记录所有 PATCH，可注入延迟模拟网络。 */
-function installStubs({ delayMs = 0, fail = false, protocol = 'http:' } = {}) {
+/**
+ * 装浏览器环境桩。
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.protocol]  location.protocol，'file:' 用来测无服务器环境
+ * @param {boolean} [opts.readFail] localStorage 读就抛（隐私模式/被策略禁用）
+ * @param {boolean} [opts.writeFail] localStorage 写就抛（配额超限）
+ * @param {object} [opts.seed]     预置 localStorage 内容（字符串原样写入，其余 JSON 化）
+ */
+function installStubs({ protocol = 'http:', readFail = false, writeFail = false, seed = {} } = {}) {
   const storage = new MemoryStorage();
-  const server = { state: { version: 1, mistakes: {}, stars: {}, progress: {}, settings: {} }, patches: 0, concurrent: 0, maxConcurrent: 0 };
+  for (const [k, v] of Object.entries(seed)) {
+    storage.map.set(k, typeof v === 'string' ? v : JSON.stringify(v));
+  }
+  if (readFail) {
+    storage.getItem = () => { throw new Error('SecurityError: localStorage 被禁用'); };
+  }
+  if (writeFail) {
+    storage.setItem = () => {
+      const err = new Error('QuotaExceededError: 超出配额');
+      err.name = 'QuotaExceededError';
+      throw err;
+    };
+  }
 
   globalThis.localStorage = storage;
   globalThis.location = { protocol, href: `${protocol}//localhost/` };
 
-  globalThis.fetch = async (url, options = {}) => {
-    server.concurrent += 1;
-    server.maxConcurrent = Math.max(server.maxConcurrent, server.concurrent);
-    try {
-      if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
-      if (fail) throw new Error('connection refused');
-
-      const path = String(url);
-      if (path.endsWith('/api/state') && options.method === 'PATCH') {
-        const patch = JSON.parse(options.body);
-        server.patches += 1;
-        if (patch.mistakes) Object.assign(server.state.mistakes, patch.mistakes);
-        if (patch.stars) Object.assign(server.state.stars, patch.stars);
-        if (patch.progress) Object.assign(server.state.progress, patch.progress);
-        if (patch.settings) Object.assign(server.state.settings, patch.settings);
-        return jsonResponse({ ok: true, state: server.state });
-      }
-      if (path.endsWith('/api/state')) {
-        return jsonResponse({ ok: true, state: server.state });
-      }
-      return jsonResponse({ ok: true });
-    } finally {
-      server.concurrent -= 1;
-    }
+  // 网络哨兵：状态层不该碰它，checkHealth 才会用。
+  const net = { calls: 0, paths: [] };
+  globalThis.fetch = async (url) => {
+    net.calls += 1;
+    net.paths.push(String(url));
+    return jsonResponse({ ok: true, units: 42, cards: 2458, entries: 2251, builtAt: '2026-01-01T00:00:00.000Z', port: 8787 });
   };
 
   delete globalThis.window;
-  return { storage, server };
+  return { storage, net };
 }
 
 function jsonResponse(payload) {
@@ -66,7 +68,7 @@ function jsonResponse(payload) {
   };
 }
 
-/** 每次测试都重新 import，避免模块级 cache 串台。 */
+/** 每次测试都重新 import，避免模块级状态串台。 */
 async function freshApi() {
   const url = new URL('../assets/api.js', import.meta.url).href;
   return import(`${url}?t=${Date.now()}${Math.random()}`);
@@ -91,7 +93,7 @@ function group(name) {
 group('并发写不丢更新');
 
 {
-  installStubs({ delayMs: 20 });
+  installStubs({});
   const api = await freshApi();
 
   // 同一张卡并发错两次 → 错次必须是 2
@@ -99,13 +101,13 @@ group('并发写不丢更新');
     api.recordMistake('card-x', 'en'),
     api.recordMistake('card-x', 'en'),
   ]);
-  let state = await api.loadState();
+  const state = await api.loadState();
   ok('并发两次 recordMistake → count=2', state.mistakes['card-x'].count === 2,
     `实际 ${state.mistakes['card-x'].count}`);
 }
 
 {
-  installStubs({ delayMs: 10 });
+  installStubs({});
   const api = await freshApi();
 
   // 并发 5 次，两种模式 → count=5，modes 并集 [en,pos]
@@ -125,10 +127,9 @@ group('并发写不丢更新');
 }
 
 {
-  installStubs({ delayMs: 10 });
+  installStubs({});
   const api = await freshApi();
 
-  // 并发写不同卡 → 两张都要在
   await Promise.all([
     api.recordMistake('card-a', 'en'),
     api.recordMistake('card-b', 'pos'),
@@ -139,10 +140,10 @@ group('并发写不丢更新');
 }
 
 {
-  installStubs({ delayMs: 10 });
+  installStubs({});
   const api = await freshApi();
 
-  // 并发：星标 + 错题 + 进度，互不干扰
+  // 并发：星标 + 错题 + 进度，互不干扰（三类数据分三个键）
   await Promise.all([
     api.toggleStar('card-z', '7a-u1'),
     api.recordMistake('card-z', 'en'),
@@ -156,10 +157,9 @@ group('并发写不丢更新');
 }
 
 {
-  installStubs({ delayMs: 10 });
+  installStubs({});
   const api = await freshApi();
 
-  // 并发 20 张不同卡
   const jobs = [];
   for (let i = 0; i < 20; i += 1) jobs.push(api.recordMistake(`bulk-${i}`, 'en'));
   await Promise.all(jobs);
@@ -199,9 +199,14 @@ group('错题本语义');
   await api.clearMistake('never-existed');
   state = await api.loadState();
   ok('销号不存在的卡不报错也不写入', api.mistakeList(state).length === 1);
+
+  await api.clearAllMistakes();
+  state = await api.loadState();
+  ok('一键清空后错题本为空', api.mistakeList(state).length === 0);
+  ok('清空后原始记录仍在（只是销号）', Object.keys(state.mistakes).length === 1);
 }
 
-/* ========================== 3. 星标与进度 ========================== */
+/* ========================== 3. 星标 / 进度 / 设置 ========================== */
 
 group('星标与进度');
 
@@ -216,6 +221,7 @@ group('星标与进度');
   state = await api.loadState();
   ok('星标成功', api.isStarred(state, 's1') === true);
   ok('星标列表含 s1', api.starList(state).length === 1);
+  ok('星标记下了所属单元', state.stars.s1.unitId === '7a-u1');
 
   await api.toggleStar('s1', '7a-u1');
   state = await api.loadState();
@@ -243,227 +249,271 @@ group('星标与进度');
     JSON.stringify(state.settings));
 }
 
-/* ========================== 4. 离线降级 ========================== */
+/* ========================== 4. 浏览器缓存键位 ========================== */
 
-group('离线降级');
+group('浏览器缓存键位');
 
 {
-  // file:// 协议 → 完全不碰 fetch，走本地镜像
-  installStubs({ protocol: 'file:' });
+  const { storage } = installStubs({});
   const api = await freshApi();
 
-  await api.recordMistake('offline-1', 'en');
-  const state = await api.loadState();
-  ok('file:// 下仍能记录错题', state.mistakes['offline-1'].count === 1);
-  ok('存储模式标注为 local', api.getStorageMode() === 'local', api.getStorageMode());
+  await api.recordMistake('k1', 'en');
+  await api.toggleStar('k2', '7a-u1');
+  await api.saveProgress('7a-u1', { index: 1, total: 47 });
+  await api.saveSettings({ senseSplit: true });
+
+  ok('错题写在 dsh_word_mistakes', !!storage.getItem('dsh_word_mistakes'));
+  ok('星标写在 dsh_word_stars', !!storage.getItem('dsh_word_stars'));
+  ok('进度写在 dsh_word_progress', !!storage.getItem('dsh_word_progress'));
+  ok('设置写在 dsh_word_settings', !!storage.getItem('dsh_word_settings'));
+
+  ok('错题键里只有错题', Object.keys(JSON.parse(storage.getItem('dsh_word_mistakes'))).join() === 'k1',
+    storage.getItem('dsh_word_mistakes'));
+  ok('星标键里只有星标', Object.keys(JSON.parse(storage.getItem('dsh_word_stars'))).join() === 'k2',
+    storage.getItem('dsh_word_stars'));
+  ok('进度键里只有进度', Object.keys(JSON.parse(storage.getItem('dsh_word_progress'))).join() === '7a-u1',
+    storage.getItem('dsh_word_progress'));
+
+  // 只写变化的键：写错题不该碰星标键的字节
+  const starRaw = storage.getItem('dsh_word_stars');
+  await api.recordMistake('k3', 'pos');
+  ok('写错题不动星标键', storage.getItem('dsh_word_stars') === starRaw);
+
+  // 删掉错题键 → 只有错题本清空，星标还在（键位互相独立）
+  storage.removeItem('dsh_word_mistakes');
+  const after = await api.loadState();
+  ok('单独删错题键只清空错题本', api.mistakeList(after).length === 0);
+  ok('单独删错题键不影响星标', api.starList(after).length === 1, JSON.stringify(api.starList(after)));
 }
 
 {
-  // http 但 fetch 一直失败 → 降级且不抛异常
-  installStubs({ fail: true });
+  // 跨会话（刷新页面）：同一份 localStorage，全新的模块实例
+  const { storage } = installStubs({});
+  const api1 = await freshApi();
+  await api1.recordMistake('persist-1', 'en');
+  await api1.toggleStar('persist-2', '7b-u1');
+  await api1.saveProgress('7b-u1', { index: 7, mode: 'pos', total: 20 });
+  await api1.saveSettings({ senseSplit: false, ttsAccent: 'en-US' });
+
+  const api2 = await freshApi();
+  const state = await api2.loadState();
+  ok('刷新后错题还在', state.mistakes['persist-1'].count === 1);
+  ok('刷新后错题模式还在', JSON.stringify(state.mistakes['persist-1'].modes) === '["en"]');
+  ok('刷新后星标还在', api2.isStarred(state, 'persist-2'));
+  ok('刷新后进度还在', state.progress['7b-u1'].index === 7 && state.progress['7b-u1'].mode === 'pos');
+  ok('刷新后设置还在', state.settings.senseSplit === false && state.settings.ttsAccent === 'en-US',
+    JSON.stringify(state.settings));
+  ok('刷新后存储模式仍是 browser', api2.getStorageMode() === 'browser', api2.getStorageMode());
+  ok('磁盘上确实落了四个键', ['dsh_word_mistakes', 'dsh_word_stars', 'dsh_word_progress', 'dsh_word_settings']
+    .filter((k) => storage.getItem(k)).length === 4);
+}
+
+{
+  // 旧键（服务端时代的遗留）：不读、不删、不影响
+  const legacy = {
+    dsh_word_state_mirror: JSON.stringify({
+      version: 1,
+      mistakes: { 'old-mistake': { count: 9, modes: ['en'], clearedAt: null } },
+      stars: { 'old-star': { at: '2026-01-01T00:00:00Z', unitId: '7a-u1', removedAt: null } },
+      progress: { '7a-u1': { index: 5, total: 47, updatedAt: '2026-01-01T00:00:00Z' } },
+      settings: { senseSplit: false },
+    }),
+    dsh_word_pending_sync: '1',
+    dsh_word_uid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  };
+  const { storage } = installStubs({ seed: legacy });
+  const api = await freshApi();
+
+  const state = await api.loadState();
+  ok('旧镜像里的错题不会被读进来', api.mistakeList(state).length === 0,
+    JSON.stringify(api.mistakeList(state)));
+  ok('旧镜像里的星标不会被读进来', api.starList(state).length === 0);
+  ok('旧镜像里的进度不会被读进来', api.lastStudied(state) === null);
+  ok('旧镜像里的设置不会被读进来', JSON.stringify(state.settings) === '{}', JSON.stringify(state.settings));
+
+  await api.recordMistake('fresh-1', 'en');
+  ok('旧镜像原样留着（不删）', storage.getItem('dsh_word_state_mirror') === legacy.dsh_word_state_mirror);
+  ok('旧 pending 标记原样留着（不删）', storage.getItem('dsh_word_pending_sync') === '1');
+  ok('旧 uid 原样留着（不删）', storage.getItem('dsh_word_uid') === legacy.dsh_word_uid);
+  ok('新写入只落新键', !!storage.getItem('dsh_word_mistakes'));
+}
+
+/* ========================== 5. 降级与异常 ========================== */
+
+group('存储不可用时的降级');
+
+{
+  // 配额超限：写得进不去，但功能不能断
+  const { storage } = installStubs({ writeFail: true });
   const api = await freshApi();
 
   let threw = false;
+  let state;
   try {
-    await api.loadState();
-    await api.recordMistake('offline-2', 'en');
-    await api.saveProgress('7a-u1', { index: 1 });
+    state = await api.recordMistake('q1', 'en');
   } catch {
     threw = true;
   }
-  ok('服务器失败时不抛异常', threw === false);
-  const state = await api.loadState();
-  ok('失败后错题仍记在本地', state.mistakes['offline-2'].count === 1);
-  ok('降级为 local', api.getStorageMode() === 'local');
-  ok('记录了错误信息供界面提示', !!api.getLastError(), String(api.getLastError()));
+  ok('配额超限时不抛异常', threw === false);
+  ok('配额超限后错题仍记在内存里', state && state.mistakes.q1.count === 1);
+  ok('配额超限降级为 memory 模式', api.getStorageMode() === 'memory', api.getStorageMode());
+  ok('记录了失败原因供界面提示', /Quota/i.test(api.getLastError() || ''), String(api.getLastError()));
+
+  await api.recordMistake('q1', 'en');
+  const again = await api.loadState();
+  ok('内存模式下累加仍然正确', again.mistakes.q1.count === 2, `实际 ${again.mistakes.q1.count}`);
+  ok('内存模式下星标也能用', (await api.toggleStar('q2', '7a-u1'), api.isStarred(await api.loadState(), 'q2')));
+  ok('写不进去时磁盘上确实没有数据', storage.getItem('dsh_word_mistakes') === null);
 }
 
-/* ========================== 4.5 离线补同步 ========================== */
-
-group('离线 → 上线补同步');
-
 {
-  // 一开始服务器不可达；本地写几个错题；然后服务器恢复，必须补推上去。
-  const { server } = installStubs({ fail: true });
+  // localStorage 读被禁（隐私模式）：按空处理，读写都在内存里
+  installStubs({ readFail: true });
   const api = await freshApi();
 
-  await api.recordMistake('off-1', 'en');
-  await api.recordMistake('off-2', 'pos');
+  let threw = false;
+  let state;
+  try {
+    state = await api.loadState();
+  } catch {
+    threw = true;
+  }
+  ok('读被禁时不抛异常', threw === false);
+  ok('读被禁时按空状态处理', Object.keys(state.mistakes).length === 0);
+  ok('读被禁时降级为 memory 模式', api.getStorageMode() === 'memory', api.getStorageMode());
+
+  const next = await api.recordMistake('r1', 'en');
+  ok('读被禁时仍在内存里记录错题', next.mistakes.r1.count === 1);
+  const reread = await api.loadState();
+  ok('读被禁时读回来的是内存里那份（没被立刻丢掉）', reread.mistakes.r1.count === 1,
+    JSON.stringify(reread.mistakes));
+}
+
+{
+  // 键被外部写坏 / 环境不支持 localStorage 对象
+  const { storage } = installStubs({
+    seed: {
+      dsh_word_mistakes: '{ 这不是 JSON',
+      dsh_word_progress: { '7a-u1': { index: 3, mode: 'en', total: 47, updatedAt: '2026-01-01T00:00:00Z' } },
+    },
+  });
+  const api = await freshApi();
+
+  let threw = false;
+  let state;
+  try {
+    state = await api.loadState();
+  } catch {
+    threw = true;
+  }
+  ok('坏 JSON 不抛异常', threw === false);
+  ok('坏 JSON 按空处理', Object.keys(state.mistakes).length === 0);
+  ok('坏了的那个键不影响其它键', state.progress['7a-u1'].index === 3);
+
+  const fixed = await api.recordMistake('fix-1', 'en');
+  ok('下一次写入把坏数据修好', fixed.mistakes['fix-1'].count === 1);
+  ok('修好后的键是合法 JSON',
+    JSON.parse(storage.getItem('dsh_word_mistakes'))['fix-1'].count === 1);
+}
+
+{
+  // 连 localStorage 对象都取不到（被策略整个禁用）
+  installStubs({});
+  delete globalThis.localStorage;
+  const api = await freshApi();
+
+  let threw = false;
+  let state;
+  try {
+    state = await api.loadState();
+    state = await api.recordMistake('n1', 'en');
+  } catch {
+    threw = true;
+  }
+  ok('localStorage 不存在时不抛异常', threw === false);
+  ok('localStorage 不存在时写在内存里', state && state.mistakes.n1.count === 1);
+  ok('localStorage 不存在时标注 memory 模式', api.getStorageMode() === 'memory', api.getStorageMode());
+}
+
+/* ========================== 6. 跨标签页 / 不读缓存 ========================== */
+
+group('跨标签页与陈旧数据');
+
+{
+  const { storage } = installStubs({});
+  const api = await freshApi();
+
+  await api.recordMistake('mine', 'en');
+  ok('本标签页写入已落盘', !!storage.getItem('dsh_word_mistakes'));
+
+  // 模拟另一个标签页写星标（直接改磁盘，绕过本实例）
+  storage.setItem('dsh_word_stars', JSON.stringify({
+    'other-star': { at: '2026-02-01T00:00:00Z', unitId: '7a-u1', removedAt: null },
+  }));
   let state = await api.loadState();
-  ok('离线期间错题记在本地', Object.keys(state.mistakes).length === 2);
-  ok('离线期间标记为 local', api.getStorageMode() === 'local', api.getStorageMode());
-  ok('离线期间有未同步改动', api.hasPendingSync() === true);
-  ok('离线期间服务端一条都没收到', Object.keys(server.state.mistakes).length === 0,
-    JSON.stringify(Object.keys(server.state.mistakes)));
+  ok('loadState 立刻能看到另一标签页写的星标', api.isStarred(state, 'other-star'),
+    JSON.stringify(state.stars));
 
-  // 服务器恢复
-  server.concurrent = 0;
-  globalThis.fetch = async (url, options = {}) => {
-    if (String(url).includes('/api/state') && options.method === 'PATCH') {
-      const patch = JSON.parse(options.body);
-      server.patches += 1;
-      if (patch.mistakes) Object.assign(server.state.mistakes, patch.mistakes);
-      if (patch.stars) Object.assign(server.state.stars, patch.stars);
-      if (patch.progress) Object.assign(server.state.progress, patch.progress);
-      if (patch.settings) Object.assign(server.state.settings, patch.settings);
-      return jsonResponse({ ok: true, state: server.state });
-    }
-    return jsonResponse({ ok: true, state: server.state });
-  };
-
-  // 触发一次刷新 → 应该把本地那份推上去，而不是被服务端的空状态盖掉
-  await api.refreshState();
-
-  ok('恢复后服务端收到离线期间的错题',
-    Object.keys(server.state.mistakes).length === 2,
-    `服务端只有 ${Object.keys(server.state.mistakes).length} 条：${JSON.stringify(Object.keys(server.state.mistakes))}`);
-  ok('补同步后 pending 清零', api.hasPendingSync() === false);
-  ok('补同步后回到 server 模式', api.getStorageMode() === 'server', api.getStorageMode());
+  // 另一标签页往同一个键里加了一张卡，本标签页再写自己那张 → 两张都要在
+  storage.setItem('dsh_word_mistakes', JSON.stringify({
+    'other-card': { count: 4, modes: ['en'], lastWrongAt: '2026-02-01T00:00:00Z', clearedAt: null },
+  }));
+  await api.recordMistake('mine-2', 'pos');
+  const merged = JSON.parse(storage.getItem('dsh_word_mistakes'));
+  ok('同键写入会与磁盘现值合并（另一标签页的卡还在）', !!merged['other-card'],
+    JSON.stringify(Object.keys(merged)));
+  ok('同键写入自己的卡也在', !!merged['mine-2'], JSON.stringify(Object.keys(merged)));
+  ok('另一标签页的错次没被改小', merged['other-card'].count === 4, String(merged['other-card'].count));
 
   state = await api.loadState();
-  ok('本地错题没有被服务端空状态覆盖', Object.keys(state.mistakes).length === 2,
-    JSON.stringify(Object.keys(state.mistakes)));
-  ok('错次信息完整保留', state.mistakes['off-1'].count === 1 && state.mistakes['off-2'].modes[0] === 'pos');
-
-  // 恢复后再写一条 → 正常走服务端
-  await api.recordMistake('off-3', 'en');
-  ok('恢复后新写入直接落服务端', !!server.state.mistakes['off-3']);
+  ok('两张卡都在读回来的一致状态里',
+    !!state.mistakes['other-card'] && !!state.mistakes['mine-2']);
 }
 
+/* ========================== 7. 不访问网络 ========================== */
+
+group('状态层不碰网络');
+
 {
-  // 离线写 → 上线后**继续写**（不主动 refresh）也应补同步
-  const { server } = installStubs({ fail: true });
+  const { net } = installStubs({});
   const api = await freshApi();
 
-  await api.recordMistake('p1', 'en');
-  ok('离线写入 pending', api.hasPendingSync() === true);
+  await api.loadState();
+  await api.recordMistake('net-1', 'en');
+  await api.toggleStar('net-2', '7a-u1');
+  await api.saveProgress('7a-u1', { index: 2, total: 47 });
+  await api.saveSettings({ senseSplit: true });
+  await api.clearMistake('net-1');
+  await api.refreshState();
+  await api.buildWrongbookMarkdown(await api.loadState());
 
-  // 服务器恢复
-  globalThis.fetch = async (url, options = {}) => {
-    if (String(url).includes('/api/state') && options.method === 'PATCH') {
-      const patch = JSON.parse(options.body);
-      if (patch.mistakes) Object.assign(server.state.mistakes, patch.mistakes);
-      return jsonResponse({ ok: true, state: server.state });
-    }
-    return jsonResponse({ ok: true, state: server.state });
-  };
+  ok('全部状态操作一次网络请求都没发', net.calls === 0, `实际 ${net.calls} 次：${net.paths.join(', ')}`);
 
-  await api.recordMistake('p2', 'en');
-  ok('恢复后的下一次写入会把离线改动一起补上',
-    !!server.state.mistakes.p1 && !!server.state.mistakes.p2,
-    JSON.stringify(Object.keys(server.state.mistakes)));
-  ok('补完后 pending 清零', api.hasPendingSync() === false);
+  const health = await api.checkHealth();
+  ok('checkHealth 才发一次请求', net.calls === 1, `实际 ${net.calls} 次`);
+  ok('checkHealth 解析服务端返回', health.ok === true && health.units === 42, JSON.stringify(health));
 }
 
 {
-  // 跨会话：离线写入 → **重新加载页面**（重新 import 模块，内存全清）→ 网络恢复。
-  // pending 标记与镜像都必须活过这次「刷新」，否则离线那批改动会被服务端旧值覆盖掉。
-  //
-  // 注意：这里必须让 **GET 和 PATCH 一起失败**（真实断网就是这样）。
-  // 如果 GET 还能通，applyPatch 里的 loadState() 会先拿到服务端状态、
-  // 之后写成功、pending 被清掉 —— 那就测不出「刷新后标记是否还在」。
-  const { storage, server } = installStubs({ fail: true });
-  const api1 = await freshApi();
-
-  await api1.recordMistake('reload-1', 'en');
-  await api1.recordMistake('reload-2', 'pos');
-  const mirrorBefore = JSON.parse(storage.getItem('dsh_word_state_mirror'));
-  ok('刷新前镜像里有 2 条错题', Object.keys(mirrorBefore.mistakes).length === 2,
-    JSON.stringify(Object.keys(mirrorBefore.mistakes)));
-  ok('刷新前 pending 标记已落 localStorage',
-    storage.getItem('dsh_word_pending_sync') === '1',
-    String(storage.getItem('dsh_word_pending_sync')));
-  ok('离线期间服务端一条都没收到', Object.keys(server.state.mistakes).length === 0,
-    JSON.stringify(Object.keys(server.state.mistakes)));
-
-  // —— 模拟刷新：同一份 localStorage，全新的模块实例；此时网络已恢复 ——
-  globalThis.fetch = async (url, options = {}) => {
-    if (String(url).includes('/api/state') && options.method === 'PATCH') {
-      const patch = JSON.parse(options.body);
-      if (patch.mistakes) Object.assign(server.state.mistakes, patch.mistakes);
-      if (patch.stars) Object.assign(server.state.stars, patch.stars);
-      if (patch.progress) Object.assign(server.state.progress, patch.progress);
-      if (patch.settings) Object.assign(server.state.settings, patch.settings);
-      return jsonResponse({ ok: true, state: server.state });
-    }
-    return jsonResponse({ ok: true, state: server.state });
-  };
-
-  const api2 = await freshApi();          // 新会话：内存全空
-
-  ok('新会话能从 localStorage 看到 pending 标记',
-    storage.getItem('dsh_word_pending_sync') === '1',
-    String(storage.getItem('dsh_word_pending_sync')));
-
-  const state = await api2.loadState();   // 首次读取
-
-  ok('新会话读到的仍是本地那 2 条（没被服务端空状态覆盖）',
-    Object.keys(state.mistakes).length === 2,
-    JSON.stringify(Object.keys(state.mistakes)));
-  ok('新会话把离线改动补推到了服务端',
-    Object.keys(server.state.mistakes).length === 2,
-    `服务端有 ${Object.keys(server.state.mistakes).length} 条`);
-  ok('补推后 pending 标记被清掉', api2.hasPendingSync() === false);
-  ok('补推后回到 server 模式', api2.getStorageMode() === 'server', api2.getStorageMode());
-
-  const mirrorAfter = JSON.parse(storage.getItem('dsh_word_state_mirror'));
-  ok('镜像没有被清空', Object.keys(mirrorAfter.mistakes).length === 2,
-    JSON.stringify(Object.keys(mirrorAfter.mistakes)));
-}
-
-{
-  // 判别性用例：证明「pending 标记」是真的在起决策作用，而不是镜像里碰巧有数据。
-  // 造法：本地有错题、**服务端也有错题但内容不同**，且带 pending 标记。
-  // 有标记 → 必须以本地为准并把本地推上去；
-  // 没标记（上一个用例的对照组）→ 必须以服务端为准。
-  const { storage, server } = installStubs({});
-  server.state.mistakes = {
-    'server-old': { count: 9, modes: ['en'], lastWrongAt: '2026-01-01T00:00:00Z', clearedAt: null },
-  };
-  storage.setItem('dsh_word_state_mirror', JSON.stringify({
-    version: 1,
-    mistakes: { 'local-new': { count: 1, modes: ['pos'], lastWrongAt: '2026-02-01T00:00:00Z', clearedAt: null } },
-    stars: {}, progress: {}, settings: {},
-  }));
-  storage.setItem('dsh_word_pending_sync', '1');   // ← 关键：带着待同步标记进入新会话
-
+  // 不是 http(s) 打开（例如 file:）—— checkHealth 直接给结论，不尝试请求
+  const { net } = installStubs({ protocol: 'file:' });
   const api = await freshApi();
-  const state = await api.loadState();
 
-  ok('带 pending 时以本地为准（本地错题保留）', !!state.mistakes['local-new'],
-    JSON.stringify(Object.keys(state.mistakes)));
-  ok('带 pending 时把本地改动推给了服务端', !!server.state.mistakes['local-new'],
-    JSON.stringify(Object.keys(server.state.mistakes)));
-  ok('带 pending 时不会丢掉服务端原有的其它错题', !!server.state.mistakes['server-old'],
-    JSON.stringify(Object.keys(server.state.mistakes)));
-  ok('推送成功后 pending 被清', api.hasPendingSync() === false);
+  const health = await api.checkHealth();
+  ok('file: 协议下 checkHealth 返回 file-protocol', health.ok === false && health.reason === 'file-protocol',
+    JSON.stringify(health));
+  ok('file: 协议下不发请求', net.calls === 0, `实际 ${net.calls} 次`);
+
+  const state = await api.recordMistake('file-1', 'en');
+  ok('file: 协议下状态照样写本机', state.mistakes['file-1'].count === 1);
 }
 
-{
-  // 反向断言：**没有** pending 标记时，loadState 应该以服务端为准（而不是永远偏向本地）。
-  // 没有这条，上面那组即使「永远走本地分支」也会绿，等于没测到东西。
-  const { storage, server } = installStubs({});
-  server.state.mistakes = { 'server-only': { count: 3, modes: ['en'], lastWrongAt: '2026-01-01T00:00:00Z', clearedAt: null } };
-  storage.setItem('dsh_word_state_mirror', JSON.stringify({
-    version: 1, mistakes: { 'stale-local': { count: 1, modes: ['en'], clearedAt: null } },
-    stars: {}, progress: {}, settings: {},
-  }));
-  // 注意：不设 pending 标记
+/* ========================== 8. 导出 ========================== */
 
-  const api = await freshApi();
-  const state = await api.loadState();
-  ok('没有 pending 时以服务端为准', !!state.mistakes['server-only'],
-    JSON.stringify(Object.keys(state.mistakes)));
-  ok('没有 pending 时本地陈旧数据不覆盖服务端', !state.mistakes['stale-local'],
-    JSON.stringify(Object.keys(state.mistakes)));
-}
-
-/* ========================== 5. 导出 ========================== */
-
-group('离线导出错题本');
+group('本地导出错题本');
 
 {
-  installStubs({ fail: true });
+  installStubs({});
   const api = await freshApi();
   const { VOCAB } = await import('../assets/vocab.js');
 
@@ -476,10 +526,9 @@ group('离线导出错题本');
   ok('导出含单词 call', md.includes('call'));
   ok('导出含错误模式中文', md.includes('拼写') && md.includes('词性'));
   ok('导出含错次 2', /\| call \|.*\| 2 \|/.test(md), md.split('\n').find((l) => l.startsWith('| call')));
-  ok('所属单元用可读标签（与服务端一致）',
-    md.includes('七年级上册 · Starter Unit 1'),
+  ok('所属单元用可读标签', md.includes('七年级上册 · Starter Unit 1'),
     md.split('\n').find((l) => l.startsWith('| call')));
-  ok('统计行格式与服务端一致', md.includes('- 错词数量：1') && md.includes('- 覆盖单元：1'));
+  ok('统计行格式完整', md.includes('- 错词数量：1') && md.includes('- 覆盖单元：1'));
   console.log(md.split('\n').filter((l) => l.startsWith('| call') || l.startsWith('- ')).map((l) => `  ${l}`).join('\n'));
 
   // 传自定义 lookup 也要能用
@@ -490,7 +539,7 @@ group('离线导出错题本');
 
 {
   // 孤儿 id（词库重建后删掉的行）：不该吐出一行空数据，也不该静默吞掉。
-  installStubs({ fail: true });
+  installStubs({});
   const api = await freshApi();
 
   await api.recordMistake('7a-u1#L37#1', 'en');       // 真实存在

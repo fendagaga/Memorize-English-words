@@ -36,7 +36,7 @@
     .hdr-nav .btn { padding-inline: 12px; }
   }
   .ftr { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; align-items: baseline; padding: 14px 0 34px; font-size: 12.5px; color: var(--ink-soft); }
-  #storage-note[data-mode="local"] { color: var(--wrong); }
+  #storage-note[data-mode="memory"] { color: var(--wrong); }
 
   /* 装饰性竖排小字（宽屏才出现） */
   .side-mark { position: absolute; right: -36px; top: 92px; display: none; }
@@ -338,7 +338,7 @@
     </main>
 
     <footer class="ftr">
-      <span id="storage-note" aria-live="polite">正在连接服务端…</span>
+      <span id="storage-note" aria-live="polite">正在读取本机存储…</span>
       <span>宣纸 · 初中英语词表</span>
     </footer>
   </div>
@@ -350,11 +350,11 @@ import {
   unitById, volumeById, siblingSenses, buildQueue, cardSenses, mergeSettings,
 } from './assets/vocab.js';
 import {
-  loadState, getStorageMode, getUid, lastStudied, hasPendingSync,
+  loadState, getStorageMode, lastStudied,
   mistakeList, recordMistake, clearMistake,
   starList, isStarred, toggleStar,
   saveProgress, getProgress, saveSettings,
-  exportWrongbookUrl, buildWrongbookMarkdown, downloadText,
+  buildWrongbookMarkdown, downloadText,
 } from './assets/api.js';
 
 /* ========================== 常量与小工具 ========================== */
@@ -996,17 +996,15 @@ function starRowHtml(card) {
 function paintCounts() {
   navWrongCount.textContent = String(mistakeList(S.state).length);
   navStarCount.textContent = String(starList(S.state).length);
-  paintStorage();                            // 每次写入后顺带刷新页脚的同步状态位
+  paintStorage();                            // 每次写入后顺带刷新页脚的存储状态位
 }
 
 function paintStorage() {
-  const mode = getStorageMode();
-  const pending = hasPendingSync();
-  storageNote.dataset.mode = mode;
-  storageNote.textContent = (mode === 'local'
-    ? '本地模式（未连服务端）：进度与错题存在本机浏览器里。'
-    : '已连接服务端：进度、错题与星标自动同步。')
-    + (pending ? '有改动待同步。' : '');
+  const memory = getStorageMode() === 'memory';
+  storageNote.dataset.mode = memory ? 'memory' : 'browser';
+  storageNote.textContent = memory
+    ? '浏览器存储不可用：改动只在当前标签页内有效，关掉页面就会丢。'
+    : '错题本、星标与进度都存在本机浏览器里。';
 }
 
 function paintToolbar() {
@@ -1214,17 +1212,12 @@ function speak(text) {
 async function exportWrongbook() {
   setStatus('正在导出错题本…');
   try {
-    const res = await fetch(exportWrongbookUrl(), { headers: { 'X-Word-Uid': getUid() } });
-    if (!res.ok) throw new Error(`${res.status}`);
-    const md = await res.text();
-    if (!md.trim()) throw new Error('empty');
-    downloadText('wrongbook.md', md);
-    setStatus('已导出错题本（服务端生成）。');
-  } catch {
-    // buildWrongbookMarkdown 是 async：不传 lookup 时它会自己加载完整卡片索引
+    // 数据就在本机，直接在浏览器里拼 Markdown（buildWrongbookMarkdown 异步加载卡片索引）
     const md = await buildWrongbookMarkdown(S.state);
     downloadText('wrongbook.md', md);
-    setStatus('已导出错题本（本地生成，服务端不可用）。');
+    setStatus('已导出错题本（本机生成）。');
+  } catch (err) {
+    setStatus(`导出失败：${(err && err.message) ? err.message : String(err)}`);
   }
 }
 
@@ -1430,7 +1423,7 @@ async function boot() {
   S.senseSplit = qSense ? qSense !== 'merge' : settings.senseSplit !== false;
 
   initTts();
-  paintCounts();          // 页眉角标 + 页脚同步状态
+  paintCounts();          // 页眉角标 + 页脚存储状态
   route();
 }
 

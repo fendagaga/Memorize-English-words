@@ -56,8 +56,9 @@
   background: var(--ink-faint);
   transition: background var(--dur) var(--ease);
 }
-.mode[data-mode="server"] .dot { background: var(--indigo); }
-.mode[data-mode="local"] .dot { background: var(--gold); }
+.mode[data-mode="browser"] .dot { background: var(--indigo); }
+.mode[data-mode="memory"] .dot { background: var(--cinnabar); box-shadow: 0 0 0 3px var(--cinnabar-wash); }
+.mode[data-mode="memory"] { color: var(--cinnabar); }
 .mode[data-mode="warn"] .dot { background: var(--wrong); }
 .mode[data-mode="warn"] { color: var(--wrong); }
 
@@ -410,7 +411,7 @@
     </p>
     <p class="mode" id="modeLine">
       <span class="dot" aria-hidden="true"></span>
-      <span id="modeText" aria-live="polite">正在连接服务端……</span>
+      <span id="modeText" aria-live="polite">正在读取本机存储……</span>
     </p>
   </div>
 </header>
@@ -615,7 +616,7 @@ function renderVolumes() {
   list.append(frag);
 }
 
-/* ========================== 2. 服务端状态与错题本入口 ========================== */
+/* ========================== 2. 本机存储状态与错题本入口 ========================== */
 
 function setMode(kind, text) {
   const line = $('#modeLine');
@@ -664,8 +665,8 @@ async function loadEverything() {
   try { state = await loadState(); } catch { state = null; }
   const storage = getStorageMode();
 
-  if (storage === 'server') setMode('server', '服务端同步');
-  else setMode('local', '本地模式（未连服务端）');
+  if (storage === 'memory') setMode('memory', '浏览器存储不可用：改动只在当前标签页内有效');
+  else setMode('browser', '本机浏览器存储');
 
   if (state) {
     setBadge('wrong', mistakeList(state).length);
@@ -679,9 +680,9 @@ async function loadEverything() {
 
   const foot = $('#footMode');
   if (foot) {
-    foot.textContent = storage === 'server'
-      ? '错题本、星标与背诵进度存在服务端（按浏览器 uid 分文件），换一台设备也能接着背。'
-      : '没有连上服务端，错题本、星标与进度暂存在本机浏览器里，功能照常可用。';
+    foot.textContent = storage === 'memory'
+      ? '浏览器不让写本机存储（隐私模式或被禁用），这次背的错题、星标与进度只留在当前标签页里，关掉就没了。'
+      : '错题本、星标、背诵进度与设置都存在本机浏览器（localStorage）里，不经过服务器；换浏览器或清理浏览器数据会从零开始。';
   }
 
   const stamp = $('#buildStamp');

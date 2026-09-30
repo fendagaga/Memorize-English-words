@@ -1,7 +1,8 @@
 {
-  "uid": "e2e1a0dd19a969",
+  "base": "http://127.0.0.1:8787",
+  "storage": "localStorage",
   "answered": 46,
   "summaryReached": true,
-  "passed": 43,
+  "passed": 50,
   "failures": []
 }

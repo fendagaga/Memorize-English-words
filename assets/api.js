@@ -1,22 +1,36 @@
 /**
- * 服务端状态访问层。
+ * 状态访问层 —— 错题本 / 星标 / 进度 / 设置**全部存在浏览器本机**（localStorage）。
  *
- * 服务端（scripts/serve.mjs）把每个浏览器的「错题本 / 星标 / 进度 / 设置」
- * 存成 userData/<uid>.json。这个模块负责：
- *   1. 生成并记住 uid（localStorage）
- *   2. 读写 /api/state，带离线降级
- *   3. 提供错题本、星标、进度的语义化操作
+ * 四类数据各占一个键，互不干扰：
+ *   dsh_word_mistakes  错题本      { <cardId>: { count, modes, lastWrongAt, clearedAt } }
+ *   dsh_word_stars     星标生词本  { <cardId>: { at, unitId, removedAt } }
+ *   dsh_word_progress  背诵进度    { <unitId>: { index, mode, shuffled, total, updatedAt, seq } }
+ *   dsh_word_settings  设置        { senseSplit, ttsAccent }
  *
- * 离线降级：如果页面不是通过 http 打开（比如直接双击 html），或服务器挂了，
- * 会自动切到 localStorage 存一份，功能照常可用，只是不跟服务端同步。
- * 状态里的 `storage` 字段会告诉界面当前是哪种模式。
+ * 为什么分四个键：一次只写发生变化的那个键 —— 多标签页同时写「错题」与「星标」
+ * 不会互相整表覆盖；万一某个键被写坏也只坏这一份；用户想单独清掉错题本、保住
+ * 星标，删一个键就行。
+ *
+ * 不经过服务器：这个模块里没有任何状态请求，`fetch` 只出现在 checkHealth()
+ * （首页拿词库构建时间用）。
+ *
+ * 降级：localStorage 不可用（隐私模式、被策略禁用）或写失败（配额超限）时，
+ * 改动落到模块内存里，功能照常、本会话内读写一致，关掉页面就没了 ——
+ * 界面通过 getStorageMode() === 'memory' 提示用户。
+ *
+ * 旧键（`dsh_word_state_mirror` / `dsh_word_pending_sync` / `dsh_word_uid`）
+ * 是本层服务端时代的遗留，**不读也不删**；想清干净见 README。
  */
 
-const UID_KEY = 'dsh_word_uid';
-const MIRROR_KEY = 'dsh_word_state_mirror';
-const UID_RE = /^[a-z0-9]{8,32}$/;
+const KEYS = {
+  mistakes: 'dsh_word_mistakes',
+  stars: 'dsh_word_stars',
+  progress: 'dsh_word_progress',
+  settings: 'dsh_word_settings',
+};
+const STATE_KEYS = Object.keys(KEYS);
 
-/** 卡片查表：离线导出错题本时要把 cardId 还原成单词、词性、释义、单元名。 */
+/** 卡片查表：导出错题本时要把 cardId 还原成单词、词性、释义、单元名。 */
 let CARD_INDEX = null;
 export async function cardIndex() {
   if (!CARD_INDEX) {
@@ -26,27 +40,97 @@ export async function cardIndex() {
   return CARD_INDEX;
 }
 
-/* ========================== uid ========================== */
+/* ========================== 存储 ========================== */
 
-function randomUid() {
-  const bytes = new Uint8Array(16);
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+/** 'browser' 已落 localStorage ｜ 'memory' 只能用内存（关页即失）。 */
+let storageMode = 'browser';
+/** 最近一次存储异常，界面可以提示。 */
+let lastError = null;
+/**
+ * localStorage 不可用时的兜底：key -> 原始 JSON 串。
+ * 只保存「比 localStorage 更新」的那些键，落盘成功后立刻移出。
+ */
+const memory = new Map();
+
+function degrade(err) {
+  lastError = (err && err.message) ? err.message : String(err);
+  storageMode = 'memory';
 }
 
-export function getUid() {
-  let uid = null;
-  try { uid = localStorage.getItem(UID_KEY); } catch { /* 隐私模式下会抛 */ }
-  if (!uid || !UID_RE.test(uid)) {
-    uid = randomUid();
-    try { localStorage.setItem(UID_KEY, uid); } catch { /* 忽略 */ }
+/** localStorage 对象本身在部分环境下取用即抛异常，这里统一收口。 */
+function store() {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
   }
-  return uid;
 }
+
+function parseObject(raw) {
+  try {
+    const value = JSON.parse(raw);
+    return value && typeof value === 'object' ? value : {};
+  } catch {
+    return {};                      // 键被外部写坏：按空处理，下一次写入自然修好
+  }
+}
+
+function readFeature(name) {
+  const key = KEYS[name];
+  if (memory.has(key)) return parseObject(memory.get(key));   // 内存里那份更新
+  const s = store();
+  if (!s) return {};
+  try {
+    const raw = s.getItem(key);
+    return raw ? parseObject(raw) : {};
+  } catch (err) {
+    degrade(err);
+    return {};
+  }
+}
+
+function writeFeature(name, value) {
+  const key = KEYS[name];
+  let raw;
+  try {
+    raw = JSON.stringify(value);
+  } catch (err) {
+    degrade(err);
+    return false;
+  }
+  memory.set(key, raw);
+  const s = store();
+  try {
+    if (!s) throw new Error('localStorage 不可用');
+    s.setItem(key, raw);
+    // 落盘后再读回来确认一次：有的环境「写得进、读不出」（存取被策略拦住），
+    // 这时内存那份必须留着，否则刚记下的错题当场就没了。
+    if (s.getItem(key) !== raw) throw new Error('localStorage 写入后读不回来');
+    memory.delete(key);
+    // 内存里已经没有待落盘的键 → 说明四类数据都在磁盘上，回到 browser 模式。
+    if (!memory.size) {
+      storageMode = 'browser';
+      lastError = null;
+    }
+    return true;
+  } catch (err) {
+    degrade(err);
+    return false;
+  }
+}
+
+/** 从磁盘现读一份完整状态。不留长驻缓存：另一标签页刚写的值这里能立刻看到。 */
+function readAll() {
+  return normalizeState({
+    mistakes: readFeature('mistakes'),
+    stars: readFeature('stars'),
+    progress: readFeature('progress'),
+    settings: readFeature('settings'),
+  });
+}
+
+export function getStorageMode() { return storageMode; }
+export function getLastError() { return lastError; }
 
 /* ========================== 空状态 ========================== */
 
@@ -70,150 +154,26 @@ export function normalizeState(raw) {
     stars: s.stars && typeof s.stars === 'object' ? s.stars : {},
     progress: s.progress && typeof s.progress === 'object' ? s.progress : {},
     settings: s.settings && typeof s.settings === 'object' ? s.settings : {},
+    // 数据分四个键存，没有统一的落盘时间戳；这个字段只为形状兼容保留。
     updatedAt: s.updatedAt || null,
   };
 }
 
-/* ========================== 本地镜像 ========================== */
-
-function readMirror() {
-  try {
-    const raw = localStorage.getItem(MIRROR_KEY);
-    return raw ? normalizeState(JSON.parse(raw)) : emptyState();
-  } catch {
-    return emptyState();
-  }
-}
-
-function writeMirror(state) {
-  try { localStorage.setItem(MIRROR_KEY, JSON.stringify(state)); } catch { /* 忽略 */ }
-}
-
-/* ========================== HTTP ========================== */
-
-/** 当前页面是否处于「可以用 fetch 访问同源 API」的环境。 */
-export function canReachServer() {
-  return typeof location !== 'undefined' && /^https?:$/.test(location.protocol);
-}
-
-async function request(path, options = {}) {
-  const res = await fetch(path, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Word-Uid': getUid(),
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`${res.status} ${res.statusText}${detail ? ` —— ${detail.slice(0, 200)}` : ''}`);
-  }
-  const type = res.headers.get('Content-Type') || '';
-  return type.includes('application/json') ? res.json() : res.text();
-}
-
 /* ========================== 状态读写 ========================== */
 
-/** 整体缓存，减少往返；每次写操作后同步更新。 */
-let cache = null;
-/** 'server' | 'local' —— 当前实际生效的存储方式。 */
-let storageMode = 'server';
-/** 最近一次同步错误信息，界面可以提示。 */
-let lastError = null;
 /**
- * 本地有没有「还没推上服务端」的改动。
- * 离线背了几个词、之后服务器又活了，这些改动必须补同步，否则看起来没丢、
- * 一换设备就全没了。补同步成功后清标记。
- *
- * **必须持久化**：只放内存的话，用户离线背完一课、切个页面或刷新一下，
- * 标记归零，下次 loadState() 就会拿服务端的旧值把镜像覆盖掉 —— 这一课的
- * 错题与进度静默消失。所以下面这个 key 要跟着 mirror 一起落 localStorage。
+ * 读取状态。始终从 localStorage 现读，任何环境都不抛异常。
+ * @param {{force?: boolean}} [options] 兼容旧调用（已无缓存可失效）
  */
-const PENDING_KEY = 'dsh_word_pending_sync';
-/** 正在补同步，避免并发触发多次全量推送。 */
-let syncing = false;
-
-function readPending() {
-  try { return localStorage.getItem(PENDING_KEY) === '1'; } catch { return false; }
-}
-function writePending(on) {
-  try {
-    if (on) localStorage.setItem(PENDING_KEY, '1');
-    else localStorage.removeItem(PENDING_KEY);
-  } catch { /* 忽略 */ }
-}
-
-export function getStorageMode() { return storageMode; }
-export function getLastError() { return lastError; }
-/** 是否还有未同步到服务端的本地改动（能跨刷新/换页）。 */
-export function hasPendingSync() { return readPending(); }
-
-/**
- * 把本地状态整份推给服务端（离线期间的改动补同步）。
- * 服务端是「按字段浅合并」，同名 key 以本次推送为准 —— 正是我们要的方向：
- * 离线期间本地是最新的。
- */
-async function flushPending() {
-  if (!hasPendingSync() || syncing) return;
-  if (!canReachServer()) return;
-  syncing = true;
-  try {
-    if (!cache) cache = readMirror();
-    const data = await request('/api/state', { method: 'PATCH', body: JSON.stringify(cache) });
-    const merged = normalizeState(data.state || data);
-    cache = merged;
-    writeMirror(merged);
-    writePending(false);
-    storageMode = 'server';
-    lastError = null;
-  } catch (err) {
-    lastError = err.message || String(err);
-    // 还是不通 —— 保持 pending，等下次写操作或 refreshState 再试。
-  } finally {
-    syncing = false;
-  }
-}
-
-/**
- * 读取状态。服务器不可达时自动降级到本地镜像，不抛异常。
- */
-export async function loadState({ force = false } = {}) {
-  if (cache && !force) return cache;
-
-  if (!canReachServer()) {
-    storageMode = 'local';
-    cache = readMirror();
-    return cache;
-  }
-
-  // 本地还有没推上去的改动（可能是上一次会话离线时攒的）→ 以本地为准先补推，
-  // 绝不能用服务端的旧值把镜像盖掉。
-  if (readPending()) {
-    cache = readMirror();
-    await flushPending();
-    if (storageMode !== 'server') return cache;   // 还没推通，继续用本地
-  }
-
-  try {
-    const data = await request('/api/state');
-    cache = normalizeState(data.state || data);
-    storageMode = 'server';
-    lastError = null;
-    writeMirror(cache);
-    return cache;
-  } catch (err) {
-    storageMode = 'local';
-    lastError = err.message || String(err);
-    cache = readMirror();
-    return cache;
-  }
+export async function loadState(options = {}) {
+  void options;            // 参数只为兼容旧调用（已经没有任何缓存需要失效）
+  return readAll();
 }
 
 /**
  * 写操作串行化。
- * `loadState → 算 → 写回` 这一段必须**整体**排队。只把写回排队是不够的：
- * 两个并发调用会在排队前各自读到同一份旧 cache，各算出 count=1，落盘还是 1。
+ * `读 → 算 → 写` 这一段必须**整体**排队。只把写排队是不够的：两个并发调用会在
+ * 排队前各自读到同一份旧值，各算出 count=1，落盘还是 1。
  */
 let writeChain = Promise.resolve();
 
@@ -225,29 +185,11 @@ function serialize(task) {
 }
 
 /**
- * 读-改-写原子操作。
- * @param {(state: object) => object} fn 拿到当前状态，返回要合的 patch
- *
- * 所有会「先读旧值再算新值」的操作都必须走这里，不能在队列外先读。
+ * 把 patch 合进 current，只把**出现过的**字段落盘。
+ * 只写变化的键，是为了不动另一个标签页刚写好的其它键。
  */
-function mutate(fn) {
-  return serialize(async () => {
-    const state = await loadState();
-    return applyPatch(fn(state) || {});
-  });
-}
-
-/**
- * 局部更新状态（错题本 / 星标 / 进度 / 设置），返回新状态。
- * 服务端与本地镜像双写，任何一边失败都不阻塞用户。
- * 注意：这个接口是**整体覆盖语义**，不要用它做「读旧值再累加」的事 —— 那要用 mutate。
- */
-export function patchState(patch) {
-  return serialize(() => applyPatch(patch));
-}
-
-async function applyPatch(patch) {
-  const current = await loadState();
+function commit(current, patch) {
+  const changed = [];
   const next = normalizeState({
     ...current,
     ...patch,
@@ -256,41 +198,32 @@ async function applyPatch(patch) {
     progress: patch.progress ? { ...current.progress, ...patch.progress } : current.progress,
     settings: patch.settings ? { ...current.settings, ...patch.settings } : current.settings,
   });
-  cache = next;
-  writeMirror(next);
-
-  if (!canReachServer()) {
-    // file:// 打开等场景 —— 本地写就是最终形态，不记 pending（没有服务端可补）。
-    storageMode = 'local';
-    return next;
-  }
-
-  // 之前就有没推上去的改动 → 先把整份补推，再落这一次，
-  // 避免只推这一条而把离线期间攒的其它改动留在本地。
-  if (hasPendingSync()) {
-    await flushPending();
-    if (storageMode !== 'server') return cache || next;
-  }
-
-  try {
-    const data = await request('/api/state', { method: 'PATCH', body: JSON.stringify(patch) });
-    storageMode = 'server';
-    lastError = null;
-    cache = normalizeState(data.state || data);
-    writeMirror(cache);
-  } catch (err) {
-    lastError = err.message || String(err);
-    storageMode = 'local';
-    // 写失败 —— 这次改动只在本地，标记待补同步，别让它悄悄消失。
-    // 标记要持久化，否则刷新/换页后就再也不会补推了。
-    writePending(true);
-  }
-  return cache || next;
+  for (const name of STATE_KEYS) if (patch[name]) changed.push(name);
+  for (const name of changed) writeFeature(name, next[name]);
+  return next;
 }
 
-/** 重新拉一次服务端状态（跨设备同步用）。 */
+/**
+ * 读-改-写原子操作：在队列内**现读**当前状态，避免拿到陈旧副本。
+ * @param {(state: object) => object} fn 拿到当前状态，返回要合的 patch
+ */
+function mutate(fn) {
+  return serialize(() => {
+    const current = readAll();
+    return commit(current, fn(current) || {});
+  });
+}
+
+/**
+ * 局部更新状态（错题本 / 星标 / 进度 / 设置），返回新状态。
+ * 注意：这个接口是**整体覆盖语义**，不要用它做「读旧值再累加」的事 —— 那要用 mutate。
+ */
+export function patchState(patch) {
+  return serialize(() => commit(readAll(), patch || {}));
+}
+
+/** 重新读一次状态（跨标签页改动后刷新用）。 */
 export async function refreshState() {
-  cache = null;
   return loadState({ force: true });
 }
 
@@ -442,17 +375,7 @@ export function saveSettings(patch) {
 /* ========================== 导出 ========================== */
 
 /**
- * 触发错题本 Markdown 下载。
- * 服务端可用时走 /api/export/wrongbook.md（内容更全），否则本地拼。
- */
-export function exportWrongbookUrl() {
-  return '/api/export/wrongbook.md';
-}
-
-/**
- * 本地拼 Markdown，作为服务端不可用时的兜底。
- * 表头与「所属单元」写法刻意与服务端 /api/export/wrongbook.md 保持一致，
- * 免得用户在两种模式下导出的文件长得不一样。
+ * 拼错题本 Markdown。数据就在本机，导出完全在浏览器里完成。
  *
  * 解析不到的 cardId（词库重建后删掉了对应行）会被跳过，并如实说明跳过了几条，
  * 而不是吐出一行空数据。
@@ -511,10 +434,18 @@ export function downloadText(filename, text, mime = 'text/markdown;charset=utf-8
 
 /* ========================== 健康检查 ========================== */
 
+/**
+ * 探一次服务端（首页用来显示词库构建时间、比对单元数）。
+ * 与状态无关：拿不到就返回 { ok:false }，页面自己兜底。
+ */
 export async function checkHealth() {
-  if (!canReachServer()) return { ok: false, reason: 'file-protocol' };
+  if (typeof location === 'undefined' || !/^https?:$/.test(location.protocol)) {
+    return { ok: false, reason: 'file-protocol' };
+  }
   try {
-    const data = await request('/api/health');
+    const res = await fetch('/api/health');
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const data = await res.json();
     return { ok: true, ...data };
   } catch (err) {
     return { ok: false, reason: err.message || String(err) };
@@ -523,10 +454,11 @@ export async function checkHealth() {
 
 if (typeof window !== 'undefined') {
   window.DSH_API = {
-    getUid, loadState, patchState, refreshState, getStorageMode, getLastError, hasPendingSync,
-    mistakeList, recordMistake, clearMistake, clearAllMistakes,
+    loadState, patchState, refreshState, getStorageMode, getLastError,
+    emptyState, normalizeState,
+    mistakeList, recordMistake, clearMistake, autoClearOnCorrect, clearAllMistakes,
     starList, isStarred, toggleStar,
     saveProgress, getProgress, lastStudied, saveSettings,
-    cardIndex, exportWrongbookUrl, buildWrongbookMarkdown, downloadText, checkHealth,
+    cardIndex, buildWrongbookMarkdown, downloadText, checkHealth,
   };
 }

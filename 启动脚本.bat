@@ -1,1 +1,1 @@
-node scripts/serve.mjs --port 9000 --host 0.0.0.0
+node scripts/serve.mjs --port 9000 --host 127.0.0.1

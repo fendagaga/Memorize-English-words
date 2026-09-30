@@ -4,8 +4,11 @@
  *   node scripts/test-server.mjs            # 需要服务器已在 8787 跑着
  *   node scripts/test-server.mjs --port 8787
  *
- * 覆盖：健康检查、词库、状态读写往返、并发 PATCH 不丢数据、
- *       uid 校验、导出 Markdown、静态资源、路径穿越防护。
+ * 覆盖：健康检查、词库、**状态接口已彻底移除**、服务端不再往 userData/ 落盘、
+ *       静态资源、路径穿越防护。
+ *
+ * 用户状态（错题本 / 星标 / 进度 / 设置）现在存在浏览器本机，服务端只是静态
+ * 文件 + 词库，所以这里不再有状态读写用例 —— 那一部分归 scripts/test-state.mjs。
  *
  * 期望值一律从 data/vocab.js 现算，不写死册数/单元数 —— 加册后本文件不需要改。
  */
@@ -30,10 +33,8 @@ function group(name) {
   console.log(`\n── ${name} ${'─'.repeat(Math.max(0, 52 - name.length))}`);
 }
 
-/** 测试专用 uid，跑完自己清理，不污染真实数据。 */
+/** 测试专用的伪 uid：确认服务端即使收到它也不写盘、不认状态。 */
 const UID = `test${Date.now().toString(16).slice(-12)}`;
-/** 需要额外清理的 uid（孤儿 id 用例等）。 */
-const EXTRA_UIDS = [];
 
 async function req(path, { method = 'GET', uid, body, raw = false } = {}) {
   const headers = {};
@@ -50,7 +51,7 @@ async function req(path, { method = 'GET', uid, body, raw = false } = {}) {
   return { status: res.status, payload, headers: res.headers };
 }
 
-/* ========================== 1. 健康检查 ========================== */
+/* ========================== 1. 健康检查与词库 ========================== */
 
 group('健康检查与词库');
 
@@ -62,6 +63,7 @@ group('健康检查与词库');
   ok(`health.units = ${VOCAB.stats.units}`, r.payload.units === VOCAB.stats.units, `实际 ${r.payload.units}`);
   ok(`health.cards = ${VOCAB.stats.cards}`, r.payload.cards === VOCAB.stats.cards, `实际 ${r.payload.cards}`);
   ok(`health.entries = ${VOCAB.stats.entries}`, r.payload.entries === VOCAB.stats.entries, `实际 ${r.payload.entries}`);
+  ok('health.port 与启动端口一致', r.payload.port === PORT, `实际 ${r.payload.port}`);
   console.log(`  units=${r.payload.units} cards=${r.payload.cards} entries=${r.payload.entries}`);
 
   const v = await req('/api/vocab');
@@ -84,152 +86,86 @@ group('健康检查与词库');
     JSON.stringify(call[0].posScopes));
 }
 
-/* ========================== 2. uid 校验 ========================== */
+/* ========================== 2. 状态接口已移除 ========================== */
 
-group('uid 校验');
+group('状态接口已移除');
 
 {
-  const noUid = await req('/api/state');
-  ok('缺 uid 的 GET /api/state 返回 400', noUid.status === 400, `实际 ${noUid.status}`);
+  const get = await req('/api/state', { uid: UID, raw: true });
+  ok('GET /api/state 返回 404', get.status === 404, `实际 ${get.status}`);
+  await get.text();
 
-  const badUid = await req('/api/state', { uid: 'x' });
-  ok('过短 uid 返回 400', badUid.status === 400, `实际 ${badUid.status}`);
+  const patch = await req('/api/state', {
+    method: 'PATCH', uid: UID, raw: true,
+    body: { mistakes: { '7a-u1#L37#1': { count: 1, modes: ['en'], clearedAt: null } } },
+  });
+  ok('PATCH /api/state 返回 405', patch.status === 405, `实际 ${patch.status}`);
+  await patch.text();
 
-  const badChars = await req('/api/state', { uid: '../../etc/passwd' });
-  ok('含路径字符的 uid 返回 400', badChars.status === 400, `实际 ${badChars.status}`);
+  const post = await req('/api/state', { method: 'POST', uid: UID, raw: true, body: { stars: {} } });
+  ok('POST /api/state 返回 405', post.status === 405, `实际 ${post.status}`);
+  await post.text();
 
-  const upper = await req('/api/state', { uid: 'ABCDEF0123456789' });
-  ok('大写 uid 被规范化为小写后可用', upper.status === 200, `实际 ${upper.status}`);
+  const del = await req('/api/state', { method: 'DELETE', uid: UID, raw: true });
+  ok('DELETE /api/state 返回 405', del.status === 405, `实际 ${del.status}`);
+  await del.text();
+
+  const exp = await req('/api/export/wrongbook.md', { uid: UID, raw: true });
+  ok('GET /api/export/wrongbook.md 返回 404', exp.status === 404, `实际 ${exp.status}`);
+  await exp.text();
+
+  const health = await req('/api/health');
+  ok('词库接口不受影响（health 仍 200）', health.status === 200);
 }
 
-/* ========================== 3. 状态读写往返 ========================== */
+/* ========================== 3. 服务端不再落盘 ========================== */
 
-group('状态读写往返');
+group('服务端不再写 userData/');
 
 {
-  const init = await req('/api/state', { uid: UID });
-  ok('新 uid 返回空状态', init.status === 200 && Object.keys(init.payload.state.mistakes).length === 0);
-  ok('新 uid 状态标注 storage=server', init.payload.storage === 'server');
+  const { readdir } = await import('node:fs/promises');
+  const { join, dirname, resolve } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const USER_DIR = resolve(__dirname, '..', 'userData');
 
-  const cardId = '7a-u1#L37#1';
-  const patch = {
-    mistakes: { [cardId]: { count: 1, modes: ['en'], lastWrongAt: '2026-01-01T00:00:00Z', clearedAt: null } },
-    settings: { senseSplit: true, ttsAccent: 'en-GB' },
+  const list = async () => {
+    try { return (await readdir(USER_DIR)).sort().join(','); } catch { return '<不存在>'; }
   };
-  const w = await req('/api/state', { method: 'PATCH', uid: UID, body: patch });
-  ok('PATCH 返回 200', w.status === 200, `实际 ${w.status}`);
-  ok('PATCH 后 mistakes 写入成功', w.payload.state.mistakes[cardId].count === 1);
-  ok('PATCH 后 settings 写入成功', w.payload.state.settings.ttsAccent === 'en-GB');
-  ok('PATCH 会打上 updatedAt', typeof w.payload.state.updatedAt === 'string');
 
-  const r = await req('/api/state', { uid: UID });
-  ok('重新 GET 能读回写入的内容', r.payload.state.mistakes[cardId].count === 1);
-  ok('读回的 settings 一致', r.payload.state.settings.ttsAccent === 'en-GB');
+  const before = await list();
+  ok('userData/ 目录仍然存在（旧的运行时状态文件留在原处）', before !== '<不存在>', before);
 
-  // 增量合并：再错一次应该累加，而不是覆盖整条
-  await req('/api/state', {
-    method: 'PATCH', uid: UID,
-    body: { mistakes: { [cardId]: { count: 2, modes: ['en', 'pos'], lastWrongAt: '2026-01-02T00:00:00Z', clearedAt: null } } },
-  });
-  const r2 = await req('/api/state', { uid: UID });
-  ok('同一个 cardId 再写是覆盖该条（错次由客户端累加）', r2.payload.state.mistakes[cardId].count === 2);
-  ok('别的字段没被清掉', r2.payload.state.settings.ttsAccent === 'en-GB');
-
-  // 新增第二条错题，第一条必须保留
-  await req('/api/state', {
-    method: 'PATCH', uid: UID,
-    body: { mistakes: { '7a-u1#L38#1': { count: 1, modes: ['pos'], lastWrongAt: '2026-01-03T00:00:00Z', clearedAt: null } } },
-  });
-  const r3 = await req('/api/state', { uid: UID });
-  ok('新增错题不会挤掉已有错题', Object.keys(r3.payload.state.mistakes).length === 2,
-    `实际 ${Object.keys(r3.payload.state.mistakes).length}`);
-
-  // 星标与进度
-  await req('/api/state', {
-    method: 'PATCH', uid: UID,
-    body: {
-      stars: { [cardId]: { at: '2026-01-04T00:00:00Z', unitId: '7a-u1', removedAt: null } },
-      progress: { '7a-u1': { index: 12, mode: 'en', shuffled: false, total: 48 } },
-    },
-  });
-  const r4 = await req('/api/state', { uid: UID });
-  ok('星标写入成功', r4.payload.state.stars[cardId].unitId === '7a-u1');
-  ok('进度写入成功', r4.payload.state.progress['7a-u1'].index === 12);
-}
-
-/* ========================== 4. 并发 PATCH ========================== */
-
-group('并发 PATCH 不丢数据');
-
-{
-  const uid = `race${Date.now().toString(16).slice(-12)}`;
-  // 同时发 20 个 PATCH，每个写一个不同的错题条目。
-  const jobs = [];
-  for (let i = 0; i < 20; i += 1) {
-    jobs.push(req('/api/state', {
-      method: 'PATCH',
-      uid,
-      body: { mistakes: { [`unit#${String(i).padStart(4, '0')}#1`]: { count: 1, modes: ['en'], lastWrongAt: '2026-01-01T00:00:00Z', clearedAt: null } } },
-    }));
-  }
-  const results = await Promise.all(jobs);
-  ok('20 个并发 PATCH 全部返回 200', results.every((r) => r.status === 200),
-    `失败 ${results.filter((r) => r.status !== 200).length} 个`);
-
-  const final = await req('/api/state', { uid });
-  const count = Object.keys(final.payload.state.mistakes).length;
-  ok('20 个并发写入一条都没丢', count === 20, `只落盘 ${count} 条`);
-}
-
-/* ========================== 5. 导出错题本 ========================== */
-
-group('导出 Markdown 错题本');
-
-{
-  const res = await req('/api/export/wrongbook.md', { uid: UID, raw: true });
-  ok('导出返回 200', res.status === 200, `实际 ${res.status}`);
-  ok('Content-Type 是 markdown',
-    (res.headers.get('Content-Type') || '').includes('markdown'),
-    res.headers.get('Content-Type'));
-  ok('带 Content-Disposition 附件头',
-    (res.headers.get('Content-Disposition') || '').includes('attachment'),
-    res.headers.get('Content-Disposition'));
-
-  const md = await res.text();
-  ok('导出内容是表格', md.includes('| 单词 | 词性 | 中文释义 | 错误次数 | 错误模式 | 所属单元 |'));
-  ok('导出含已写入的错词 call', md.includes('call'));
-  ok('导出含错误模式中文标签', md.includes('拼写'));
-  // 前面往 call 卡写了两次（第二次覆盖第一次 → 错次 2、模式并集），另加一张 me 卡
-  ok('导出统计错词数量为 2', /错词数量：2/.test(md), md.split('\n').find((l) => l.includes('错词数量')));
-  ok('同一张卡的错次累加为 2', /\| call \|.*\| 2 \|/.test(md), md.split('\n').find((l) => l.startsWith('| call')));
-  ok('错误模式取并集（拼写+词性）', /拼写、词性/.test(md), md.split('\n').find((l) => l.startsWith('| call')));
-  ok('所属单元用可读标签而非裸 id', md.includes('七年级上册 · Starter Unit 1'), md.split('\n').find((l) => l.startsWith('| call')));
-  console.log(md.split('\n').filter((l) => l.startsWith('| ') || l.includes('错词数量') || l.includes('覆盖单元')).map((l) => `  ${l}`).join('\n'));
-}
-
-{
-  // 孤儿 cardId（词库重建后删行）：导出应跳过并如实说明，而不是吐空行
-  const uid = `orph${Date.now().toString(16).slice(-12)}`;
-  await req('/api/state', {
-    method: 'PATCH', uid,
-    body: {
-      mistakes: {
-        '7a-u1#L37#1': { count: 1, modes: ['en'], lastWrongAt: '2026-01-01T00:00:00Z', clearedAt: null },
-        '7a-u1#L99999#1': { count: 2, modes: ['pos'], lastWrongAt: '2026-01-01T00:00:00Z', clearedAt: null },
+  // 把以前会写盘的那套请求全发一遍（带 uid、带状态体），服务端必须一个文件都不新增
+  await Promise.all([
+    req('/api/state', { uid: UID, raw: true }).then((r) => r.text()),
+    req('/api/state', {
+      method: 'PATCH', uid: UID, raw: true,
+      body: {
+        mistakes: { '7a-u1#L37#1': { count: 3, modes: ['en', 'pos'], clearedAt: null } },
+        stars: { '7a-u1#L37#1': { at: '2026-01-01T00:00:00Z', unitId: '7a-u1', removedAt: null } },
+        progress: { '7a-u1': { index: 9, mode: 'en', total: 47 } },
+        settings: { senseSplit: true },
       },
-    },
-  });
-  const res = await req('/api/export/wrongbook.md', { uid, raw: true });
-  const md = await res.text();
-  const dataRows = md.split('\n').filter((l) => l.startsWith('| ') && !l.includes('---') && !l.startsWith('| 单词'));
-  ok('服务端导出跳过孤儿 id', dataRows.length === 1, `实际 ${dataRows.length} 行`);
-  ok('服务端导出错词数只算可解析的', /错词数量：1/.test(md), md.split('\n').find((l) => l.includes('错词数量')));
-  ok('服务端导出说明跳过了孤儿条目', /另有\s*1\s*条记录对应的词条已不在当前词库中/.test(md),
-    md.split('\n').find((l) => l.includes('另有')));
-  EXTRA_UIDS.push(uid);
+    }).then((r) => r.text()),
+    req('/api/export/wrongbook.md', { uid: UID, raw: true }).then((r) => r.text()),
+  ]);
+  // 等一拍，给任何（不该存在的）异步写入机会落地
+  await new Promise((r) => setTimeout(r, 150));
+
+  const after = await list();
+  ok('发完写请求后 userData/ 一个文件都没新增', after === before,
+    `前 ${before} ／ 后 ${after}`);
+
+  const { existsSync } = await import('node:fs');
+  ok('没有为测试 uid 生成 json', !existsSync(join(USER_DIR, `${UID}.json`)));
+
+  const stray = (await (async () => { try { return await readdir(USER_DIR); } catch { return []; } })())
+    .filter((f) => f.endsWith('.tmp'));
+  ok('没有留下半截临时文件', stray.length === 0, stray.join(','));
 }
 
-/* ========================== 6. 静态资源 ========================== */
+/* ========================== 4. 静态资源与安全 ========================== */
 
 group('静态资源与安全');
 
@@ -237,6 +173,7 @@ group('静态资源与安全');
   for (const path of ['/', '/units.html', '/study.html', '/assets/paper.css', '/assets/api.js', '/assets/vocab.js', '/data/vocab.json']) {
     const res = await req(path, { raw: true });
     ok(`GET ${path} 返回 200`, res.status === 200, `实际 ${res.status}`);
+    await res.text();
   }
 
   const css = await req('/assets/paper.css', { raw: true });
@@ -247,51 +184,42 @@ group('静态资源与安全');
 
   const notFound = await req('/nope.html', { raw: true });
   ok('不存在的路径返回 404', notFound.status === 404, `实际 ${notFound.status}`);
+  await notFound.text();
 
-  // 路径穿越必须被挡住
-  const traversal = await req('/../SPEC.md', { raw: true });
-  ok('路径穿越被挡住（非 200）', traversal.status !== 200, `实际 ${traversal.status}`);
-  const traversal2 = await req('/%2e%2e%2fSPEC.md', { raw: true });
-  ok('编码后的路径穿越被挡住（非 200）', traversal2.status !== 200, `实际 ${traversal2.status}`);
-  const traversal3 = await req('/..%2f..%2fSPEC.md', { raw: true });
-  ok('多层编码穿越被挡住（非 200）', traversal3.status !== 200, `实际 ${traversal3.status}`);
+  // 路径穿越必须被挡住。
+  // 注意：`/../x` 这种明文写法会被 fetch/URL 在发出前就规范化掉，测不到服务端；
+  // 真正能打到服务端的是百分号编码的 `..%2f`。而且这里刻意挑一个**确实存在于
+  // 项目根之外**的文件（../pages/02-neon-poster.html）——它若是 200，就是真漏了。
+  const outsidePages = '..%2fpages%2f02-neon-poster.html';
+  const traversal = await req(`/${outsidePages}`, { raw: true });
+  ok('编码后的路径穿越打到服务端也被挡住（非 200）', traversal.status !== 200, `实际 ${traversal.status}`);
+  await traversal.text();
 
-  // 不支持的方法
-  const del = await req('/api/state', { method: 'DELETE', uid: UID, raw: true });
-  ok('DELETE /api/state 返回 405', del.status === 405, `实际 ${del.status}`);
-}
+  const traversal2 = await req('/%2e%2e%2fpages%2f02-neon-poster.html', { raw: true });
+  ok('全编码的 .. 一样被挡住（非 200）', traversal2.status !== 200, `实际 ${traversal2.status}`);
+  await traversal2.text();
 
-/* ========================== 7. 清理 ========================== */
+  const traversal3 = await req('/..%2f..%2f..%2fWindows%2fwin.ini', { raw: true });
+  ok('多层向上穿越被挡住（非 200）', traversal3.status !== 200, `实际 ${traversal3.status}`);
+  await traversal3.text();
 
-group('清理测试数据');
+  // 明文写法（客户端会先规范化）：最终不该命中项目外的文件
+  const traversal4 = await req('/../pages/02-neon-poster.html', { raw: true });
+  ok('明文 ../ 写法拿不到项目外的文件（非 200）', traversal4.status !== 200, `实际 ${traversal4.status}`);
+  await traversal4.text();
 
-{
-  const { rm } = await import('node:fs/promises');
-  const { join, dirname, resolve } = await import('node:path');
-  const { fileURLToPath } = await import('node:url');
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const USER_DIR = resolve(__dirname, '..', 'userData');
+  // 非 GET/HEAD 的静态请求
+  const put = await req('/index.html', { method: 'PUT', raw: true });
+  ok('PUT 静态文件返回 405', put.status === 405, `实际 ${put.status}`);
+  await put.text();
 
-  // 清掉本次测试与并发测试的 uid 文件，避免污染真实数据目录
-  let removed = 0;
-  for (const uid of [UID, `race${UID.slice(4)}`, ...EXTRA_UIDS]) {
-    try {
-      await rm(join(USER_DIR, `${uid}.json`), { force: true });
-      removed += 1;
-    } catch { /* 忽略 */ }
-  }
-  // 并发/孤儿用例的 uid 前缀与上面推导可能不一致，按前缀兜底扫一遍
-  const { readdir } = await import('node:fs/promises');
-  try {
-    for (const f of await readdir(USER_DIR)) {
-      if (/^(test|race|orph|repro)[0-9a-f]+\.json$/.test(f) || f.includes('.tmp')) {
-        await rm(join(USER_DIR, f), { force: true });
-        removed += 1;
-      }
-    }
-  } catch { /* 忽略 */ }
-  ok('测试数据已清理', true);
-  console.log(`  清理了 ${removed} 个测试文件`);
+  // 旧的 userData/（历史状态备份）不再对外提供下载
+  const legacy = await req('/userData/.gitkeep', { raw: true });
+  ok('GET /userData/ 下的文件返回 403', legacy.status === 403, `实际 ${legacy.status}`);
+  await legacy.text();
+  const legacyJson = await req(`/userData/${UID}.json`, { raw: true });
+  ok('GET /userData/<uid>.json 返回 403', legacyJson.status === 403, `实际 ${legacyJson.status}`);
+  await legacyJson.text();
 }
 
 /* ========================== 汇总 ========================== */

@@ -65,13 +65,25 @@ URL 参数：`unit`（单元 id，或 `wrong` / `star`）、`mode`（`en` / `pos
 
 ## 错题本
 
-- 存储：服务端 `userData/<uid>.json`（按浏览器分配一个 uid，换设备不串数据）
+- 存储：**浏览器本机**（`localStorage`），不经过服务器，也不上传任何数据
 - 去重：**按卡片 id 去重**，也就是按单词义项去重。同一个词错多次只累加 `count`，
   错误模式（`拼写` / `词性` / `释义`）取并集
 - 销号：重练时答对自动销号，也可以手动点「已掌握」
-- 导出：Markdown 表格，四列「单词 / 词性 / 中文释义 / 错误次数 / 错误模式 / 所属单元」
+- 导出：Markdown 表格，六列「单词 / 词性 / 中文释义 / 错误次数 / 错误模式 / 所属单元」，
+  在浏览器里直接生成下载
 
-服务器连不上时会自动降级成浏览器本地存储，功能照常，页面会标「本地模式」。
+四类数据各占一个键，互不干扰（DevTools → Application → Local Storage 里能看到）：
+
+| 键 | 内容 |
+|---|---|
+| `dsh_word_mistakes` | 错题本 |
+| `dsh_word_stars` | 星标生词本 |
+| `dsh_word_progress` | 背诵进度（首页「继续上次」用） |
+| `dsh_word_settings` | 设置（义项拆卡 / 朗读口音） |
+
+想从零开始：删掉对应的键就行 —— 只删 `dsh_word_mistakes` 就只清空错题本，
+星标与进度还在。隐私模式下浏览器不让写本机存储时，页面会自动退到「内存模式」
+并提示「改动只在当前标签页内有效」，功能照常可用。
 
 ---
 
@@ -163,34 +175,42 @@ node scripts/test-parser.mjs   # 4500+ 条断言，含判分边界
 | 命令 | 覆盖 | 当前 |
 |---|---|---|
 | `node scripts/test-parser.mjs` | 解析规则、单元/词条/卡片计数守恒、判分边界（英文/中文/词性）、**与 `data/vocab.json` 逐张对拍** | ✓ 7651 项 |
-| `node scripts/test-state.mjs` | api.js 状态层：并发写不丢更新、错题本去重/销号/复活、星标、进度、离线降级、离线→上线跨会话补同步、孤儿 id、导出格式 | ✓ 69 项 |
-| `node scripts/test-server.mjs` | HTTP API：健康检查、状态往返、20 路并发 PATCH、uid 校验、导出（含孤儿 id）、静态资源、路径穿越防护 | ✓ 60 项 |
+| `node scripts/test-state.mjs` | api.js 状态层：四个 localStorage 键位、并发写不丢更新、跨会话持久化、跨标签页合并不覆盖、错题本去重/销号/复活、星标、进度、设置、隐私模式与配额超限降级、坏数据自愈、**一次网络请求都不发**、孤儿 id、导出格式 | ✓ 95 项 |
+| `node scripts/test-server.mjs` | HTTP API：健康检查、词库、**状态接口已移除**（404/405）、服务端不再写 `userData/`、静态资源、路径穿越防护与 `userData/` 不可下载 | ✓ 41 项 |
 | `node scripts/audit-a11y.mjs` | 真实浏览器 7 个页面/视图 × 360px/1440px：横向滚动、标题层级、地标、ARIA、标签、触区、控制台报错 | ✓ 全绿，`.qa/a11y.json` |
 | `node scripts/audit-contrast.mjs` | 逐层回溯真实背景算 WCAG 对比度（正文 4.5:1 / 大字 3:1） | ✓ 全绿，`.qa/contrast.json` |
-| `node scripts/e2e.mjs` | 浏览器里走完整流程：首页 → 索引筛选选卡 → 背英文答错看解析 → 走完整轮 → 成绩小结 → 背词性 → 错题本 → 导出 → 星标 | ✓ 43 项，`.qa/e2e-result.json` |
+| `node scripts/e2e.mjs` | 浏览器里走完整流程：首页（存储状态文案）→ 索引筛选选卡 → 背英文答错看解析 → 走完整轮 → 成绩小结 → 背词性 → 错题本 → 本机导出 → 浏览器缓存落库校验 → 星标 | ✓ 50 项，`.qa/e2e-result.json` |
 
 ```powershell
 # 纯 Node，零依赖，不需要 npm install
 node scripts/test-parser.mjs      # 不需要服务器
-node scripts/test-state.mjs       # 不需要服务器
+node scripts/test-state.mjs       # 不需要服务器、连网络都不用
 node scripts/test-server.mjs      # 需要先起服务器
 node scripts/audit-a11y.mjs       # 需要先起服务器 + agent-browser
 node scripts/audit-contrast.mjs   # 需要先起服务器 + agent-browser
 node scripts/e2e.mjs              # 需要先起服务器 + agent-browser
 ```
 
-**合计 7823 项断言全绿**（解析 7651 + 状态 69 + API 60 + 端到端 43）。
+**合计 7837 项断言全绿**（解析 7651 + 状态 95 + API 41 + 端到端 50）。
+
+> `e2e.mjs` 会真的在浏览器里答题（写错题本/星标/进度），所以它跑之前先把这几个键
+> **备份**、跑完（含中途报错）原样还原 —— 浏览器里已有的记录不会被测试清掉。
 
 > 加册之后不必再手改这些数字：`test-server.mjs` 与 `e2e.mjs` 的期望值都从
 > `data/vocab.js` 现算，`test-parser.mjs` 直接把解析结果与 `data/vocab.json` 逐张对拍 ——
 > 原始词表与产物必须同一次构建产出，否则这里会红。
 
-### 离线也能背
+### 数据都在本机浏览器
 
-断网（或直接双击 HTML）时自动切「本地模式」，错题、星标、进度写进浏览器本地存储。
-**服务器恢复后会自动把本地改动补推上去**，不需要用户做任何事；
-这个「待同步」标记本身也是持久化的，所以离线背到一半切页面、刷新、关掉浏览器都不会丢。
-另外，离线期间写入的错题以本地为准（不会被服务端的旧状态覆盖）。
+错题、星标、进度、设置只写在浏览器的 `localStorage` 里，页面**不发任何状态请求**
+（服务器只提供页面与词库）。所以断了网、关了服务器都不影响背记，也不会出现
+「同步失败」这类提示。
+
+代价是：**换浏览器 / 换设备 / 清理浏览器数据 = 从零开始**。需要长期保存时请用
+「导出 Markdown」留档。
+
+> 页面是 ES module，得用 `http://` 打开（`file://` 下浏览器会拦下模块加载）。
+> 用 `node scripts/serve.mjs` 起的服务，或任何静态服务器都行。
 
 ---
 
@@ -205,7 +225,7 @@ word/
 ├── README.md               本文件
 ├── assets/
 │   ├── paper.css           宣纸设计系统
-│   ├── api.js              状态访问 + 离线降级
+│   ├── api.js              状态访问（浏览器本机存储 + 导出）
 │   └── vocab.js            判分规则 + 卡片工具（纯函数）
 ├── 词语raw/                原始词表（只读输入，构建的唯一数据来源）
 │   ├── 七年级上册.md
@@ -219,13 +239,13 @@ word/
 ├── data/
 │   ├── vocab.json          构建产物（API 与测试用）
 │   └── vocab.js            构建产物（浏览器内联降级用）
-├── userData/               服务端状态（每个浏览器一个 json，交付时为空，首次使用自动生成）
+├── userData/               旧版的服务端状态文件（历史备份，服务端已不读写）
 └── .qa/                    验收报告（report.md）与审计脚本产物（a11y.json / contrast.json / e2e-result.json / 截图）
 ```
 
-> `userData/` 里的每个 `<uid>.json` 都是某个浏览器的错题本、星标与进度。
-> 交付时该目录是空的（只留 `.gitkeep`），你打开页面后会按浏览器自动生成一份。
-> 想从头开始，直接删掉 `userData/` 下对应的 json 即可（或在浏览器里清 localStorage 里的 `dsh_word_uid`）。
+> `userData/` 里剩下的是**旧版本**按浏览器 uid 存的状态文件（错题本 / 星标 / 进度）。
+> 现在的版本把状态放在浏览器 `localStorage` 里，服务端既不读也不写这个目录，
+> 也不允许通过 HTTP 下载它 —— 留着只是当历史备份。
 >
 > `.qa/` 是「验收报告 + 审计产物」共用目录：`report.md` 是独立审查员的报告，
 > 其余 `a11y.json` / `contrast.json` / `e2e-result.json` / `*.png` 由上面几个审计脚本生成。
@@ -234,15 +254,22 @@ word/
 
 ## API
 
+服务端只剩两件事：静态文件与词库。**没有状态读写接口**，也没有 uid。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/health` | `{ok, units, cards, entries, builtAt, port}` |
-| GET | `/api/vocab` | 完整词库 |
-| GET | `/api/state` | 当前 uid 的状态（错题本 / 星标 / 进度 / 设置） |
-| PATCH | `/api/state` | 按字段合并更新 |
-| GET | `/api/export/wrongbook.md` | 下载 Markdown 错题本 |
+| GET | `/api/health` | `{ok, units, cards, entries, builtAt, port}` —— 首页用它显示词库构建时间、比对单元数 |
+| GET | `/api/vocab` | 完整词库（页面本身用的是内联的 `data/vocab.js`，这个接口给外部/测试用） |
 
-uid 由页面生成并存在 `localStorage.dsh_word_uid`，通过 `X-Word-Uid` 请求头传递。
+已移除的历史接口（现在返回 404 / 405，相关用例在 `test-server.mjs` 里守着）：
+
+| 方法 | 路径 | 现在的行为 |
+|---|---|---|
+| GET | `/api/state` | 404 |
+| PATCH·POST·DELETE | `/api/state` | 405 |
+| GET | `/api/export/wrongbook.md` | 404（导出改在浏览器里生成下载） |
+
+> `userData/` 目录也不再对外提供下载（返回 403），它只是旧状态文件的历史备份。
 
 ---
 
