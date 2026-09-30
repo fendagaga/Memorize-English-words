@@ -139,7 +139,7 @@ study.html  7b-u1 本轮总数 = 46（与 buildQueue('7b-u1').length 一致）�
 **命令原文**：
 
 ```powershell
-cd D:\agent\happy\word
+# 在项目根目录下（原文如此，仅把本机绝对路径换成通用写法）
 node --input-type=module -e "const v = await import('./assets/vocab.js'); …逐条断言…"
 ```
 

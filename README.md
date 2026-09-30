@@ -4,21 +4,32 @@
 
 ```
 首页 index.html  ──►  单元索引 units.html  ──►  背记 study.html
-（仿 pages/02）       （仿 pages/14）            （仿 pages/07 的调性）
 ```
 
 ---
 
 ## 快速开始
 
-```powershell
-cd D:\agent\happy\word
+需要 **Node.js 18+**。零依赖，**不用 `npm install`**。
 
-node scripts/build.mjs        # 1. 编译词库（把项目内「词语raw」解析成 data/vocab.json）
-node scripts/serve.mjs        # 2. 起服务器
+```powershell
+git clone https://github.com/fendagaga/Memorize-English-words.git
+cd Memorize-English-words
+
+node scripts/serve.mjs        # 起服务器
 ```
 
 然后打开 **http://127.0.0.1:8787/**
+
+词库产物 `data/vocab.json` 已经随仓库一起提交，所以**不装、不构建也能直接背**。
+如果你改过 `词语raw/` 里的词表，重跑一次构建即可：
+
+```powershell
+node scripts/build.mjs        # 把「词语raw」解析成 data/vocab.json / vocab.js
+node scripts/serve.mjs        # 再起服务器（词库只在启动时读一次）
+```
+
+Windows 上也可以直接双击项目根的 `启动脚本.bat`（等价于 `node scripts/serve.mjs --port 9000`）。
 
 换端口：`node scripts/serve.mjs --port 9000`
 
@@ -96,6 +107,8 @@ URL 参数：`unit`（单元 id，或 `wrong` / `star`）、`mode`（`en` / `pos
 七年级上册.md   10 单元
 七年级下册.md    8 单元
 八年级上册.md    8 单元
+八年级下册.md    8 单元
+九年级上册.md    8 单元
 ```
 
 格式（markdown 表格，`##` 起单元）：
@@ -108,10 +121,10 @@ URL 参数：`unit`（单元 id，或 `wrong` / `star`）、`mode`（`en` / `pos
 | call | v. / n. | 把……叫作；（给……）打电话；呼唤 / 打电话；大声呼叫 |
 ```
 
-### 加一册（例如九年级上册）
+### 加一册（例如九年级下册）
 
-1. 把 `九年级上册.md` 按同样格式放进项目根的 `词语raw\`
-2. 打开 `scripts/build.mjs`，确认 `VOLUMES` 里有对应配置行（已经预留了 8b / 9a / 9b）
+1. 把 `九年级下册.md` 按同样格式放进项目根的 `词语raw\`
+2. 打开 `scripts/build.mjs`，确认 `VOLUMES` 里有对应配置行（6 册都已预留）
 3. 重跑 `node scripts/build.mjs`
 4. **重启服务器**（`Ctrl+C` 后重新 `node scripts/serve.mjs`）—— 服务器只在启动时读一次词库
 
@@ -128,7 +141,7 @@ URL 参数：`unit`（单元 id，或 `wrong` / `star`）、`mode`（`en` / `pos
 
 | 项 | 数量 |
 |---|---|
-| 册次 | 5 |
+| 册次 | 5（七年级上/下册、八年级上/下册、九年级上册） |
 | 单元 | 42 |
 | 词条 | 2251 |
 | 背记卡（义项粒度） | 2458 |
@@ -136,7 +149,7 @@ URL 参数：`unit`（单元 id，或 `wrong` / `star`）、`mode`（`en` / `pos
 | 剔除（专有名词 / 缩写） | 156 |
 | 缺释义卡 | 0 |
 
-> 九年级下册尚未提供 —— 构建会自动跳过，日志里列进「未提供的册次」，
+> 还缺九年级下册 —— 构建会自动跳过，日志里列进「未提供的册次」，
 > 把文件放进 `词语raw\` 重跑即可，页面与脚本都不需要改。
 
 ---
@@ -170,7 +183,7 @@ node scripts/test-parser.mjs   # 4500+ 条断言，含判分边界
 
 ## 测试
 
-四套测试，全部零依赖（`test-server` 需要服务器已启动，`audit-a11y` 需要 `agent-browser`）。
+**零依赖、零测试框架**，不需要 `npm install`，退出码非 0 即失败。
 
 | 命令 | 覆盖 | 当前 |
 |---|---|---|
@@ -181,17 +194,17 @@ node scripts/test-parser.mjs   # 4500+ 条断言，含判分边界
 | `node scripts/audit-contrast.mjs` | 逐层回溯真实背景算 WCAG 对比度（正文 4.5:1 / 大字 3:1） | ✓ 全绿，`.qa/contrast.json` |
 | `node scripts/e2e.mjs` | 浏览器里走完整流程：首页（存储状态文案）→ 索引筛选选卡 → 背英文答错看解析 → 走完整轮 → 成绩小结 → 背词性 → 错题本 → 本机导出 → 浏览器缓存落库校验 → 星标 | ✓ 50 项，`.qa/e2e-result.json` |
 
+前三个是纯 Node，跨平台，按下面的顺序跑就行；后三个要在**真实浏览器**里点页面，
+依赖外部命令 `agent-browser`（脚本内部还用 `powershell` 做等待），因此目前只在 Windows 下跑得起来。
+
 ```powershell
-# 纯 Node，零依赖，不需要 npm install
 node scripts/test-parser.mjs      # 不需要服务器
 node scripts/test-state.mjs       # 不需要服务器、连网络都不用
 node scripts/test-server.mjs      # 需要先起服务器
-node scripts/audit-a11y.mjs       # 需要先起服务器 + agent-browser
-node scripts/audit-contrast.mjs   # 需要先起服务器 + agent-browser
-node scripts/e2e.mjs              # 需要先起服务器 + agent-browser
 ```
 
-**合计 7837 项断言全绿**（解析 7651 + 状态 95 + API 41 + 端到端 50）。
+**合计 7837 项断言全绿**（解析 7651 + 状态 95 + API 41 + 端到端 50），
+上表最后一列是当前 revision 的实测值。
 
 > `e2e.mjs` 会真的在浏览器里答题（写错题本/星标/进度），所以它跑之前先把这几个键
 > **备份**、跑完（含中途报错）原样还原 —— 浏览器里已有的记录不会被测试清掉。
@@ -223,24 +236,32 @@ word/
 ├── study.html              背记 / 错题本 / 星标生词本 / 成绩小结
 ├── CONTRACT.md             开发契约（数据接口、类名、硬性要求）
 ├── README.md               本文件
+├── 启动脚本.bat            Windows 一键起服务器
 ├── assets/
 │   ├── paper.css           宣纸设计系统
 │   ├── api.js              状态访问（浏览器本机存储 + 导出）
 │   └── vocab.js            判分规则 + 卡片工具（纯函数）
 ├── 词语raw/                原始词表（只读输入，构建的唯一数据来源）
-│   ├── 七年级上册.md
+│   ├── 七年级上册.md        十个单元
 │   ├── 七年级下册.md
-│   └── 八年级上册.md
+│   ├── 八年级上册.md
+│   ├── 八年级下册.md
+│   └── 九年级上册.md
 ├── scripts/
 │   ├── parse-vocab.mjs     词条解析器
-│   ├── build.mjs           词库编译
+│   ├── build.mjs           词库编译 → data/
 │   ├── serve.mjs           零依赖服务器
-│   └── test-parser.mjs     解析器与判分测试
+│   ├── test-parser.mjs     解析器与判分测试
+│   ├── test-state.mjs      状态层测试
+│   ├── test-server.mjs     HTTP API 测试
+│   ├── audit-a11y.mjs      无障碍审计（需 agent-browser）
+│   ├── audit-contrast.mjs  对比度审计（需 agent-browser）
+│   └── e2e.mjs             端到端全流程（需 agent-browser）
 ├── data/
-│   ├── vocab.json          构建产物（API 与测试用）
-│   └── vocab.js            构建产物（浏览器内联降级用）
-├── userData/               旧版的服务端状态文件（历史备份，服务端已不读写）
-└── .qa/                    验收报告（report.md）与审计脚本产物（a11y.json / contrast.json / e2e-result.json / 截图）
+│   ├── vocab.json          构建产物（API 与测试用，已提交）
+│   └── vocab.js            构建产物（浏览器内联用，已提交）
+├── userData/               旧版服务端状态文件的历史备份（.json 不入库）
+└── .qa/                    验收报告与审计产物（report.md / *.json / 截图，截图不入库）
 ```
 
 > `userData/` 里剩下的是**旧版本**按浏览器 uid 存的状态文件（错题本 / 星标 / 进度）。

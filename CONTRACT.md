@@ -7,13 +7,12 @@
 
 ## 0. 项目一句话
 
-初中英语单词记背系统。三个页面 + Node 零依赖服务器，全部在 `D:\agent\happy\word\`。
+初中英语单词记背系统。三个页面 + Node 零依赖服务器，全部在仓库根目录下。
 词库来自项目内的只读目录 `词语raw\`，由 `node scripts/build.mjs` 编译。
 
 ## 1. 起服务与自测
 
 ```powershell
-cd D:\agent\happy\word
 node scripts/build.mjs        # 重新编译词库（改了解析规则才需要）
 node scripts/test-parser.mjs  # 解析器 + 判分规则测试，必须全绿
 node scripts/serve.mjs        # 起在 http://127.0.0.1:8787
@@ -272,7 +271,8 @@ Google Fonts 在各自 `<head>` 里引，写法：
 | `units.html` | 单元索引：仿 `pages/14-grid-brut.html` 的交互逻辑 | teammate-2 |
 | `study.html` | 背记 + 错题本 + 星标生词本 + 成绩小结 | teammate-3 |
 
-参考文件在 `D:\agent\happy\pages\`，截图在 `D:\agent\happy\shots\`（**只读，不要改**）：
+参考原型与截图**不在本仓库内**（工作区同级另有 `pages/` 与 `shots/` 两个目录，**只读，不要改**）。
+正文只保留文件名当设计出处，clone 下来没有它们也不影响运行：
 - `pages/02-neon-poster.html` + `shots/02-neon-poster.png` —— 标题手法：错落叠加的巨型字块、
   描边空心字、细框 kicker、竖排小字、贴纸块、条形码，入场按 `--delay` 错落。
 - `pages/14-grid-brut.html` + `shots/14-grid-brut.png` —— 交互逻辑：分组筛选按钮（`aria-pressed` 互斥）
